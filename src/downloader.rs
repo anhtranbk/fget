@@ -7,6 +7,15 @@ use std::{
     str,
 };
 
+pub type PError = Box<dyn Error>;
+pub trait DownloadObserver {
+    fn on_download_start(&mut self, part: u8, total_size: u64);
+    fn on_progress(&mut self, part: u8, progress: u64);
+    fn on_download_end(&mut self, part: u8);
+
+    fn on_message(&mut self, msg: &str);
+}
+
 const BUFFER_SIZE: usize = 8192;
 const DEFAULT_HEADERS: [&'static str; 4] = [
     "User-Agent: fget/0.1.0",
@@ -14,8 +23,6 @@ const DEFAULT_HEADERS: [&'static str; 4] = [
     "Accept-Encoding: identity",
     "Connection: Keep-Alive",
 ];
-
-pub type PError = Box<dyn Error>;
 
 struct UrlInfo {
     domain: String,
@@ -148,14 +155,14 @@ fn open_conn(url_info: &UrlInfo) -> Result<Box<dyn ReadWrite>, PError> {
     }
 }
 
-pub fn run(url: &str, opath: &str) -> Result<(), PError> {
+pub fn run<T: DownloadObserver>(url: &str, opath: &str, ob: T) -> Result<(), PError> {
     let url_info = extract_url_info(url)?;
     let mut stream = open_conn(&url_info)?;
 
     let dlinfo = get_download_info(&mut stream, &url_info)?;
     let DownloadInfo(total_size, range_supported) = dlinfo;
     if total_size == 0 {
-        return Err(make_error("server return content length is zero"));
+        return Err(make_error("content length is zero"));
     }
 
     download(&mut stream, &url_info, opath, range_supported)
