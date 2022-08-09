@@ -1,13 +1,11 @@
+use fget::{make_error, Config, PError};
 use native_tls::{TlsConnector, TlsStream};
 use std::{
-    error::Error,
-    fmt,
     io::{Read, Write},
     net::TcpStream,
     str,
 };
 
-pub type PError = Box<dyn Error>;
 pub trait DownloadObserver {
     fn on_download_start(&mut self, part: u8, total_size: u64);
     fn on_progress(&mut self, part: u8, progress: u64);
@@ -34,23 +32,9 @@ struct UrlInfo {
 
 struct DownloadInfo(u64, bool);
 
-#[derive(Debug, Clone)]
-struct DownloadError(String);
-
-impl fmt::Display for DownloadError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl Error for DownloadError {}
-
 trait ReadWrite: Read + Write {}
-impl<T: Read + Write> ReadWrite for T {}
 
-fn make_error(err: &str) -> PError {
-    Box::new(DownloadError(err.to_string()))
-}
+impl<T: Read + Write> ReadWrite for T {}
 
 fn extract_url_info(url: &str) -> Result<UrlInfo, PError> {
     let parts: Vec<&str> = url.split("/").collect();
@@ -77,7 +61,7 @@ fn parse_header(header: &str) -> Option<(String, String)> {
         return None;
     }
 
-    Some((String::from(parts[0].trim()), String::from(parts[1].trim())))
+    Some((parts[0].trim().to_string(), parts[1].trim().to_string()))
 }
 
 fn get_download_info<T: ReadWrite>(
@@ -155,8 +139,8 @@ fn open_conn(url_info: &UrlInfo) -> Result<Box<dyn ReadWrite>, PError> {
     }
 }
 
-pub fn run<T: DownloadObserver>(url: &str, opath: &str, ob: T) -> Result<(), PError> {
-    let url_info = extract_url_info(url)?;
+pub fn run<T: DownloadObserver>(cfg: &Config, ob: &mut T) -> Result<(), PError> {
+    let url_info = extract_url_info(&cfg.url)?;
     let mut stream = open_conn(&url_info)?;
 
     let dlinfo = get_download_info(&mut stream, &url_info)?;
@@ -165,5 +149,5 @@ pub fn run<T: DownloadObserver>(url: &str, opath: &str, ob: T) -> Result<(), PEr
         return Err(make_error("content length is zero"));
     }
 
-    download(&mut stream, &url_info, opath, range_supported)
+    download(&mut stream, &url_info, &cfg.output_path, range_supported)
 }

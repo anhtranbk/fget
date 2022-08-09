@@ -1,22 +1,20 @@
-mod chatgpt;
+use std::env;
+
+use fget::Config;
+
 mod downloader;
 mod pb;
 
 fn main() {
-    let url = std::env::args().nth(1).expect("url must be provided");
-    let opath = std::env::args().nth(2).expect("opath must be provided");
-    // let num_threads = std::env::args()
-    //     .nth(3)
-    //     .unwrap_or_else(|| String::from("4")) // default value is 4
-    //     .parse::<u8>()
-    //     .unwrap();
+    let args = env::args().collect::<Vec<String>>();
+    let cfg = Config::build(&args).unwrap_or_else(|err| {
+        panic!("Problem parsing arguments: {err}");
+    });
 
-    let pbm = pb::ProgressManager::new();
-    let res = downloader::run(url.as_str(), opath.as_str(), pbm);
+    let mut pbm = pb::ProgressManager::new();
+    if let Err(e) = downloader::run(&cfg, &mut pbm) {
+        eprintln!("An error occurred: {}", e)
+    }
 
     // let res = chatgpt::download(&url, &opath, num_threads);
-    match res {
-        Ok(_) => println!("Download complete!"),
-        Err(e) => eprintln!("Error downloading file: {}", e),
-    }
 }
