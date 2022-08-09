@@ -2,9 +2,6 @@ use std::env;
 
 use fget::Config;
 
-mod downloader;
-mod pb;
-
 fn main() {
     let args = env::args().collect::<Vec<String>>();
     let cfg = Config::build(&args).unwrap_or_else(|err| {
