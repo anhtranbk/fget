@@ -26,12 +26,12 @@ pub struct Config {
 
 impl Config {
     pub fn build(args: &[String]) -> Result<Config, PError> {
-        if args.len() < 3 {
+        if args.len() < 2 {
             return Err(make_error("not enough arguments"));
         }
 
         let url = args[1].clone();
-        let out_path = args[2].clone();
+        let out_path = args.get(2).unwrap_or(&String::new()).clone();
 
         let mut num_threads = 4; // default value is 4
         if args.len() >= 3 {
