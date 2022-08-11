@@ -173,6 +173,7 @@ name = "fget"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "http",
  "indicatif",
  "native-tls",
  "reqwest",

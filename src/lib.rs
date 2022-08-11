@@ -1,12 +1,4 @@
-use std::{
-    error::Error,
-    fmt,
-    io::{Read, Write},
-};
-
-mod downloader;
-mod http;
-mod pb;
+use std::{error::Error, fmt};
 
 /// box of error (pointer to actual error object)
 pub type PError = Box<dyn Error>;
@@ -25,10 +17,6 @@ impl Error for FgetError {}
 pub fn make_error(err: &str) -> PError {
     Box::new(FgetError(err.to_string()))
 }
-
-pub trait ReadWrite: Read + Write {}
-
-impl<T: Read + Write> ReadWrite for T {}
 
 pub struct Config {
     pub url: String,
