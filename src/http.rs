@@ -1,6 +1,7 @@
 use std::{
-    io::{Read, Write},
+    io::{BufReader, BufWriter, Read, Write},
     net::{SocketAddr, TcpStream, ToSocketAddrs},
+    rc::Rc,
 };
 
 use http::{HeaderMap, Request, Response};
@@ -15,11 +16,17 @@ const DEFAULT_HEADERS: [&'static str; 4] = [
     "Connection: Keep-Alive",
 ];
 
-type HttpBody = Box<dyn Read>;
+pub struct ReadWrapper(Box<dyn ReadWrite>);
 
 pub trait ReadWrite: Read + Write {}
 
 impl<T: Read + Write> ReadWrite for T {}
+
+impl Read for ReadWrapper {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.0.read(buf)
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct UrlInfo {
@@ -75,6 +82,9 @@ pub fn resolve_addr(addr: &str) -> Result<SocketAddr, PError> {
     Ok(sock_addr)
 }
 
+type HttpBody = BufReader<ReadWrapper>;
+
+/// One-time http client
 pub struct HttpClient {
     url_info: UrlInfo,
     rw: Option<Box<dyn ReadWrite>>,
@@ -96,8 +106,27 @@ impl HttpClient {
         panic!()
     }
 
-    fn request(&self, req: &Request<HttpBody>) -> Result<Response<HttpBody>, PError> {
-        panic!()
+    fn request(&mut self, req: &Request<Vec<&u8>>) -> Result<Response<HttpBody>, PError> {
+        let req = format!("{} {} HTTP/1.1\r\n", req.method(), req.uri())
+            + format!("Host: {}\r\n", self.url_info.domain).as_str()
+            + DEFAULT_HEADERS.join("\r\n").as_str()
+            + "\r\n\r\n";
+
+        let mut rw = self.rw.take().unwrap();
+        rw.write_all(req.as_bytes())?;
+
+        let r = ReadWrapper(rw);
+        let br = BufReader::new(r);
+
+        // extract headers
+
+        let resp = Response::builder()
+            .status(200)
+            .header("", "")
+            .body(br)
+            .unwrap();
+
+        Ok(resp)
     }
 }
 
@@ -117,6 +146,19 @@ fn open_conn(url_info: &UrlInfo) -> Result<Box<dyn ReadWrite>, PError> {
         Ok(Box::new(stream))
     }
 }
+
+// struct RW(Rc<dyn Read>, Rc<dyn Write>);
+
+// fn open_conn2(url_info: &UrlInfo) -> Result<RW, PError> {
+//     let mut stream = TcpStream::connect(&url_info.host_addr())?;
+//     if url_info.is_tls() {
+//         let tls_conn = TlsConnector::new()?;
+//         let stream = tls_conn.connect(url_info.domain.as_str(), stream)?;
+//         Ok(RW(Rc::new(stream), Rc::clone(&stream)))
+//     } else {
+//         Ok(RW(Rc::new(stream), Rc::clone(&stream)))
+//     }
+// }
 
 fn parse_header(header: &str) -> Option<(String, String)> {
     let parts: Vec<&str> = header.split(":").collect();

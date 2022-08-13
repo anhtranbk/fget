@@ -1,10 +1,13 @@
 use crate::{
     http::{resolve_addr, HttpClient, UrlInfo},
-    Config
+    Config,
 };
 use fget::{make_error, PError};
 
-use std::str;
+use std::{
+    io::{Read, Write},
+    str,
+};
 
 pub trait DownloadObserver {
     fn on_download_start(&mut self, part: u8, total_size: u64);
@@ -20,6 +23,7 @@ struct DownloadInfo(u64, bool);
 
 fn get_download_info(client: &HttpClient, url_info: &UrlInfo) -> Result<DownloadInfo, PError> {
     let resp = client.get(url_info.path.as_str())?;
+    let body = resp.body();
 
     let mut len = 0u64;
     let mut range_supported = false;
