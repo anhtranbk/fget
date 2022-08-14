@@ -1,5 +1,30 @@
 use std::{error::Error, fmt};
 
+#[macro_export]
+macro_rules! map {
+    ($($key:expr => $value:expr),*) => {
+        {
+            let mut map = std::collections::HashMap::new();
+            $(map.insert($key, $value);)*
+            map
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! hash_map {
+    {$($k: expr => $v: expr),* $(,)?} => {
+        std::collections::HashMap::from([$(($k, $v),)*])
+    };
+}
+
+#[macro_export]
+macro_rules! hash_map_e {
+    {$($k: expr => $v: expr),* $(,)?} => {
+        std::collections::HashMap::from([$(($k, $v as _),)*])
+    };
+}
+
 /// box of error (pointer to actual error object)
 pub type PError = Box<dyn Error>;
 

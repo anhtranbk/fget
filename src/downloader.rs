@@ -3,11 +3,9 @@ use crate::{
     Config,
 };
 use fget::{make_error, PError};
+use http::header;
 
-use std::{
-    io::{Read, Write},
-    str,
-};
+use std::str;
 
 pub trait DownloadObserver {
     fn on_download_start(&mut self, part: u8, total_size: u64);
@@ -21,43 +19,37 @@ const BUFFER_SIZE: usize = 8192;
 
 struct DownloadInfo(u64, bool);
 
-fn get_download_info(client: &HttpClient, url_info: &UrlInfo) -> Result<DownloadInfo, PError> {
-    let resp = client.get(url_info.path.as_str())?;
-    let body = resp.body();
+fn get_download_info(client: &mut HttpClient, url_info: &UrlInfo) -> Result<DownloadInfo, PError> {
+    let resp = client.head(url_info.path.as_str())?;
 
     let mut len = 0u64;
     let mut range_supported = false;
 
     let headers = resp.headers();
-    for (key, val) in headers.iter() {
-        let val = val.to_str()?;
-        match key.as_str() {
-            "Content-Length" => len = val.parse::<u64>()?,
-            "Accept-Ranges" => range_supported = val == "bytes",
-            _ => continue,
+    if let Some(val) = headers.get(header::CONTENT_LANGUAGE) {
+        len = val.to_str()?.parse::<u64>()?;
+    }
+    if let Some(val) = headers.get(header::ACCEPT_RANGES) {
+        if val.to_str()? == "bytes" {
+            range_supported = true;
         }
+    }
+
+    // only for debugging purposes
+    for (key, value) in headers.iter() {
+        println!("{}:{}", key, value.to_str().unwrap_or_default());
     }
 
     Ok(DownloadInfo(len, range_supported))
 }
 
 fn download(
-    client: &HttpClient,
-    url_info: &UrlInfo,
-    out_path: &str,
-    range_supported: bool,
+    _client: &HttpClient,
+    _url_info: &UrlInfo,
+    _out_path: &str,
+    _range_supported: bool,
 ) -> Result<(), PError> {
-    let mut buf = [0u8; BUFFER_SIZE];
-
-    // stream.write_all(req.as_bytes())?;
-    // stream.read(&mut buf)?;
-
-    let s = str::from_utf8(&buf)?;
-    for line in s.lines() {
-        println!("{}", line.trim());
-    }
-
-    Ok(())
+    panic!("download fn is not implemented");
 }
 
 pub fn run<T: DownloadObserver>(cfg: &Config, _: &mut T) -> Result<(), PError> {
@@ -74,10 +66,10 @@ pub fn run<T: DownloadObserver>(cfg: &Config, _: &mut T) -> Result<(), PError> {
         sock_addr.ip(),
         url_info.port
     );
-    let client = HttpClient::connect(&url_info)?;
+    let mut client = HttpClient::connect(&url_info)?;
     println!("connected.");
 
-    let dlinfo = get_download_info(&client, &url_info)?;
+    let dlinfo = get_download_info(&mut client, &url_info)?;
     let DownloadInfo(total_size, range_supported) = dlinfo;
     if total_size == 0 {
         return Err(make_error("content length is zero"));

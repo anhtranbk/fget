@@ -1,20 +1,14 @@
 use std::{
-    io::{BufReader, BufWriter, Read, Write},
+    collections::HashMap,
+    io::{BufReader, Read, Write},
     net::{SocketAddr, TcpStream, ToSocketAddrs},
-    rc::Rc,
+    str::FromStr,
 };
 
-use http::{HeaderMap, Request, Response};
+use http::{header, request::Builder, Method, Request, Response, StatusCode};
 use native_tls::TlsConnector;
 
-use fget::{make_error, PError};
-
-const DEFAULT_HEADERS: [&'static str; 4] = [
-    "User-Agent: fget/0.1.0",
-    "Accept: */*",
-    "Accept-Encoding: identity",
-    "Connection: Keep-Alive",
-];
+use fget::{hash_map, make_error, map, PError};
 
 pub struct ReadWrapper(Box<dyn ReadWrite>);
 
@@ -84,6 +78,13 @@ pub fn resolve_addr(addr: &str) -> Result<SocketAddr, PError> {
 
 type HttpBody = BufReader<ReadWrapper>;
 
+// static DEFAULT_HEADERS: HashMap<&str, &str> = hash_map!(
+//     "User-Agent" => "fget/0.1.0",
+//     "Accept" => "*/*",
+//     "Accept-Encoding" => "identity",
+//     "Connection" => "Keep-Alive"
+// );
+
 /// One-time http client
 pub struct HttpClient {
     url_info: UrlInfo,
@@ -98,42 +99,77 @@ impl HttpClient {
         })
     }
 
-    pub fn head(&self, path: &str) -> Result<Response<HttpBody>, PError> {
-        panic!()
+    pub fn head(&mut self, path: &str) -> Result<Response<HttpBody>, PError> {
+        let req = self.make_request(Method::HEAD, path).body(vec![]).unwrap();
+
+        self.send_request(&req)
     }
 
-    pub fn get(&self, path: &str) -> Result<Response<HttpBody>, PError> {
-        panic!()
+    pub fn get(&mut self, path: &str) -> Result<Response<HttpBody>, PError> {
+        let req = self.make_request(Method::GET, path).body(vec![]).unwrap();
+
+        self.send_request(&req)
     }
 
-    fn request(&mut self, req: &Request<Vec<&u8>>) -> Result<Response<HttpBody>, PError> {
-        let req = format!("{} {} HTTP/1.1\r\n", req.method(), req.uri())
-            + format!("Host: {}\r\n", self.url_info.domain).as_str()
-            + DEFAULT_HEADERS.join("\r\n").as_str()
-            + "\r\n\r\n";
+    fn make_request(&self, method: Method, path: &str) -> Builder {
+        let mut builder = Request::builder()
+            .method(method)
+            .uri(format!("/{}", path))
+            .header(header::HOST, &self.url_info.domain);
+
+        let default_headers: HashMap<&str, &str> = hash_map!(
+            "User-Agent" => "fget/0.1.0",
+            "Accept" => "*/*",
+            "Accept-Encoding" => "identity",
+            "Connection" => "Keep-Alive"
+        );
+
+        for (key, val) in default_headers.iter() {
+            builder = builder.header(*key, *val);
+        }
+
+        builder
+    }
+
+    fn send_request(&mut self, req: &Request<Vec<&u8>>) -> Result<Response<HttpBody>, PError> {
+        let mut data = format!("{} {} HTTP/1.1\r\n", req.method(), req.uri());
+        for (key, val) in req.headers().iter() {
+            data += &key.to_string();
+            data += ": ";
+            data += &val.to_str().unwrap();
+            data += "\r\n";
+        }
+        // end of headers
+        data += "\r\n\r\n";
 
         let mut rw = self.rw.take().unwrap();
-        rw.write_all(req.as_bytes())?;
+        rw.write_all(data.as_bytes())?;
 
-        let r = ReadWrapper(rw);
-        let br = BufReader::new(r);
-
-        // extract headers
-
-        let resp = Response::builder()
-            .status(200)
-            .header("", "")
-            .body(br)
-            .unwrap();
-
-        Ok(resp)
+        let br = BufReader::new(ReadWrapper(rw));
+        Ok(HttpClient::make_response(br)?)
     }
-}
 
-fn extract_headers<T: Read>(r: &T) -> HeaderMap {
-    let headers = HeaderMap::new();
+    fn make_response(mut br: BufReader<ReadWrapper>) -> Result<Response<HttpBody>, PError> {
+        let mut buff = String::new();
+        br.read_to_string(&mut buff)?;
 
-    headers
+        let mut lines = buff.lines();
+        let parts: Vec<&str> = lines.next().unwrap().split_whitespace().collect();
+        if parts.len() != 3 {
+            return Err(make_error("invalid response"));
+        }
+
+        let status_code = StatusCode::from_str(parts[1])?;
+        let mut builder = Response::builder().status(status_code);
+
+        for line in lines {
+            if let Some((key, val)) = parse_header(line) {
+                builder = builder.header(key, val);
+            }
+        }
+
+        Ok(builder.body(br).unwrap())
+    }
 }
 
 fn open_conn(url_info: &UrlInfo) -> Result<Box<dyn ReadWrite>, PError> {
