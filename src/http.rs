@@ -3,12 +3,13 @@ use std::{
     io::{BufReader, Read, Write},
     net::{SocketAddr, TcpStream, ToSocketAddrs},
     str::FromStr,
+    time::Duration,
 };
 
 use http::{header, request::Builder, Method, Request, Response, StatusCode};
 use native_tls::TlsConnector;
 
-use fget::{hash_map, make_error, map, PError};
+use fget::{hash_map, make_error, PError};
 
 pub struct ReadWrapper(Box<dyn ReadWrite>);
 
@@ -139,24 +140,25 @@ impl HttpClient {
         }
         // end of headers
         data += "\r\n";
-        println!("{}", data);
 
         let mut rw = self.rw.take().unwrap();
         rw.write_all(data.as_bytes())?;
         rw.flush()?;
-        println!("flushed");
 
         let br = BufReader::new(ReadWrapper(rw));
         Ok(HttpClient::make_response(br)?)
     }
 
     fn make_response(mut br: BufReader<ReadWrapper>) -> Result<Response<HttpBody>, PError> {
-        let mut buff = String::new();
-        br.read_to_string(&mut buff)?;
+        let mut buf = [0u8; 4096];
+        let n = br.read(&mut buf)?;
+        println!("number of bytes read: {:?}", n);
 
+        let buff = String::from_utf8(buf.to_vec())?;
         let mut lines = buff.lines();
         let parts: Vec<&str> = lines.next().unwrap().split_whitespace().collect();
-        println!("first line: {:?}", parts);
+
+        println!("response: {:?}", parts);
         if parts.len() < 3 {
             return Err(make_error("invalid response"));
         }
@@ -175,7 +177,13 @@ impl HttpClient {
 }
 
 fn open_conn(url_info: &UrlInfo) -> Result<Box<dyn ReadWrite>, PError> {
-    let stream = TcpStream::connect(&url_info.host_addr())?;
+    // TODO: allow user to configure duration
+    let duration = Duration::from_secs(5);
+    let stream = TcpStream::connect_timeout(
+        &url_info.host_addr().to_socket_addrs()?.next().unwrap(),
+        duration,
+    )?;
+
     if url_info.is_tls() {
         let tls_conn = TlsConnector::new()?;
         let stream = tls_conn.connect(url_info.domain.as_str(), stream)?;

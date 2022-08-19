@@ -37,7 +37,7 @@ fn get_download_info(client: &mut HttpClient, url_info: &UrlInfo) -> Result<Down
 
     // only for debugging purposes
     for (key, value) in headers.iter() {
-        println!("header => {}:{}", key, value.to_str().unwrap_or_default());
+        println!("header => {}: {}", key, value.to_str().unwrap_or_default());
     }
 
     Ok(DownloadInfo(len, range_supported))
@@ -55,7 +55,6 @@ fn download(
 pub fn run<T: DownloadObserver>(cfg: &Config, _: &mut T) -> Result<(), PError> {
     println!("Downloading file at {}...", cfg.url);
     let url_info = UrlInfo::parse(&cfg.url)?;
-    println!("resolved url {:?}", url_info);
 
     print!("Resolving {}... ", url_info.domain);
     let sock_addr = resolve_addr(&url_info.host_addr())?;
