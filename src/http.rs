@@ -34,21 +34,21 @@ pub struct UrlInfo {
 impl UrlInfo {
     pub fn parse(url: &str) -> Result<UrlInfo, PError> {
         let parts: Vec<&str> = url.split("/").collect();
-        let scheme = parts[0];
+        let scheme = &parts[0][..parts[0].len() - 1];
         let host = parts[2];
-        let port = if parts[0].starts_with("http") {
-            80
-        } else {
-            443
+        let port = match scheme {
+            "http" => 80,
+            "https" => 443,
+            _ => return Err(make_error("Invalid scheme")),
         };
 
-        let query_idx = parts[0].len() + parts[1].len() + 2;
+        let query_idx = parts[0].len() + parts[1].len() + parts[2].len() + 2;
         Ok(UrlInfo {
             scheme: scheme.to_string(),
             domain: host.to_string(),
             port,
             path: url[query_idx..].to_string(),
-            fname: parts[parts.len() - 1 as usize].to_string(),
+            fname: parts[parts.len() - 1].to_string(),
         })
     }
 
@@ -101,20 +101,18 @@ impl HttpClient {
 
     pub fn head(&mut self, path: &str) -> Result<Response<HttpBody>, PError> {
         let req = self.make_request(Method::HEAD, path).body(vec![]).unwrap();
-
         self.send_request(&req)
     }
 
     pub fn get(&mut self, path: &str) -> Result<Response<HttpBody>, PError> {
         let req = self.make_request(Method::GET, path).body(vec![]).unwrap();
-
         self.send_request(&req)
     }
 
     fn make_request(&self, method: Method, path: &str) -> Builder {
         let mut builder = Request::builder()
             .method(method)
-            .uri(format!("/{}", path))
+            .uri(format!("{}", path))
             .header(header::HOST, &self.url_info.domain);
 
         let default_headers: HashMap<&str, &str> = hash_map!(
@@ -140,10 +138,13 @@ impl HttpClient {
             data += "\r\n";
         }
         // end of headers
-        data += "\r\n\r\n";
+        data += "\r\n";
+        println!("{}", data);
 
         let mut rw = self.rw.take().unwrap();
         rw.write_all(data.as_bytes())?;
+        rw.flush()?;
+        println!("flushed");
 
         let br = BufReader::new(ReadWrapper(rw));
         Ok(HttpClient::make_response(br)?)
@@ -155,7 +156,8 @@ impl HttpClient {
 
         let mut lines = buff.lines();
         let parts: Vec<&str> = lines.next().unwrap().split_whitespace().collect();
-        if parts.len() != 3 {
+        println!("first line: {:?}", parts);
+        if parts.len() < 3 {
             return Err(make_error("invalid response"));
         }
 
@@ -203,4 +205,28 @@ fn parse_header(header: &str) -> Option<(String, String)> {
     }
 
     Some((parts[0].trim().to_string(), parts[1].trim().to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::http::UrlInfo;
+
+    #[test]
+    fn test_parse_url() {
+        let url = "https://download.virtualbox.org/virtualbox/7.0.8/VirtualBox-7.0.8_BETA4-156879-macOSArm64.dmg";
+        let url_info = UrlInfo::parse(url).unwrap();
+
+        assert_eq!("https", url_info.scheme.as_str());
+        assert_eq!("download.virtualbox.org", url_info.domain.as_str());
+        assert_eq!(
+            "/virtualbox/7.0.8/VirtualBox-7.0.8_BETA4-156879-macOSArm64.dmg",
+            url_info.path.as_str()
+        );
+        assert_eq!(
+            "VirtualBox-7.0.8_BETA4-156879-macOSArm64.dmg",
+            url_info.fname.as_str()
+        );
+        assert_eq!(true, url_info.is_tls());
+        assert_eq!(443, url_info.port);
+    }
 }
