@@ -1,5 +1,6 @@
 use std::{error::Error, fmt};
 
+#[allow(dead_code)]
 #[macro_export]
 macro_rules! map {
     ($($key:expr => $value:expr),*) => {
@@ -11,6 +12,7 @@ macro_rules! map {
     };
 }
 
+#[allow(dead_code)]
 #[macro_export]
 macro_rules! hash_map {
     {$($k: expr => $v: expr),* $(,)?} => {
@@ -18,6 +20,7 @@ macro_rules! hash_map {
     };
 }
 
+#[allow(dead_code)]
 #[macro_export]
 macro_rules! hash_map_e {
     {$($k: expr => $v: expr),* $(,)?} => {
