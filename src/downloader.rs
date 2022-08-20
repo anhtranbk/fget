@@ -5,19 +5,20 @@ use crate::{
 use fget::{make_error, PError};
 use http::header;
 
-use std::str;
+use std::{io::Read, str};
 
 pub trait DownloadObserver {
-    fn on_download_start(&mut self, part: u8, total_size: u64);
-    fn on_progress(&mut self, part: u8, progress: u64);
-    fn on_download_end(&mut self, part: u8);
+    fn on_download_start(&mut self, idx: u8, len: u64);
+    fn on_progress(&mut self, idx: u8, pos: u64);
+    fn on_download_end(&mut self, idx: u8);
 
     fn on_message(&mut self, msg: &str);
 }
 
-const BUFFER_SIZE: usize = 8192;
-
-struct DownloadInfo(u64, bool);
+struct DownloadInfo {
+    range_supported: bool,
+    len: u64,
+}
 
 fn get_download_info(client: &mut HttpClient, url_info: &UrlInfo) -> Result<DownloadInfo, PError> {
     let resp = client.head(url_info.path.as_str())?;
@@ -42,19 +43,38 @@ fn get_download_info(client: &mut HttpClient, url_info: &UrlInfo) -> Result<Down
         println!("header => {}: {}", key, value.to_str().unwrap_or_default());
     }
 
-    Ok(DownloadInfo(len, range_supported))
+    Ok(DownloadInfo {
+        range_supported,
+        len,
+    })
 }
 
-fn download(
-    _client: &HttpClient,
-    _url_info: &UrlInfo,
-    _out_path: &str,
-    _range_supported: bool,
+fn download<T: DownloadObserver>(
+    client: &mut HttpClient,
+    cfg: &Config,
+    url_info: &UrlInfo,
+    dlinfo: &DownloadInfo,
+    ob: &mut T,
 ) -> Result<(), PError> {
-    panic!("download fn is not implemented");
+    ob.on_download_start(0, dlinfo.len);
+
+    let resp = client.get(&url_info.path)?;
+    let mut r = resp.into_body();
+    let mut buf = [0u8; 8192];
+    let mut pr = 0u64;
+
+    while pr < dlinfo.len {
+        let n = r.read(&mut buf)?;
+        pr += n as u64;
+        ob.on_progress(0, pr)
+    }
+
+    ob.on_download_end(0);
+
+    Ok(())
 }
 
-pub fn run<T: DownloadObserver>(cfg: &Config, _: &mut T) -> Result<(), PError> {
+pub fn run<T: DownloadObserver>(cfg: &Config, ob: &mut T) -> Result<(), PError> {
     println!("Downloading file at {}...", cfg.url);
     let url_info = UrlInfo::parse(&cfg.url)?;
 
@@ -73,10 +93,11 @@ pub fn run<T: DownloadObserver>(cfg: &Config, _: &mut T) -> Result<(), PError> {
     println!("HTTP request sent, awaiting response...");
 
     let dlinfo = get_download_info(&mut client, &url_info)?;
-    let DownloadInfo(total_size, range_supported) = dlinfo;
-    if total_size == 0 {
+    if dlinfo.len == 0 {
         return Err(make_error("content length is zero"));
     }
 
-    download(&client, &url_info, &cfg.out_path, range_supported)
+    // out client is one-time client, so we need to create the new one
+    let mut client = HttpClient::connect(&url_info)?;
+    download(&mut client, &cfg, &url_info, &dlinfo, ob)
 }
