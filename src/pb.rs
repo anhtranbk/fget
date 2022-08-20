@@ -8,8 +8,7 @@ pub struct ProgressManager {
 }
 
 impl DownloadObserver for ProgressManager {
-    fn on_download_start(&mut self, idx: u8, len: u64) {
-        println!("on download start for {}: {:?}", idx, len);
+    fn on_download_start(&mut self, _: u8, len: u64) {
         self.pbs.push(new_progress_bar(len));
     }
 
@@ -21,7 +20,9 @@ impl DownloadObserver for ProgressManager {
     }
 
     fn on_download_end(&mut self, idx: u8) {
-        println!("on download end for {}", idx);
+        if let Some(pb) = self.pbs.get_mut(idx as usize) {
+            pb.finish_with_message(format!("part {} downloaded", idx));
+        }
     }
 
     fn on_message(&mut self, msg: &str) {
@@ -31,13 +32,15 @@ impl DownloadObserver for ProgressManager {
 
 impl ProgressManager {
     pub fn new(size: usize) -> Self {
-        Self { pbs: Vec::with_capacity(size) }
+        Self {
+            pbs: Vec::with_capacity(size),
+        }
     }
 }
 
 fn new_progress_bar(len: u64) -> ProgressBar {
     let pb = ProgressBar::new(len as u64);
-    pb.set_style(ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})")
+    pb.set_style(ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({binary_bytes_per_sec}, {eta})")
         .unwrap());
     // .progress_chars("#>-"));
 
@@ -46,7 +49,7 @@ fn new_progress_bar(len: u64) -> ProgressBar {
 
 #[allow(dead_code)]
 pub fn test_show_pb() {
-    let mut downloaded=0u64;
+    let mut downloaded = 0u64;
     let len: u64 = 243 * 1024 * 1024;
     let pb = new_progress_bar(len);
 
