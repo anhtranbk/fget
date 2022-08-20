@@ -26,13 +26,15 @@ fn get_download_info(client: &mut HttpClient, url_info: &UrlInfo) -> Result<Down
     let mut range_supported = false;
 
     let headers = resp.headers();
-    if let Some(val) = headers.get(header::CONTENT_LANGUAGE) {
+    if let Some(val) = headers.get(header::CONTENT_LENGTH) {
         len = val.to_str()?.parse::<u64>()?;
+        println!("=> found content-len: {:?}", val);
     }
     if let Some(val) = headers.get(header::ACCEPT_RANGES) {
         if val.to_str()? == "bytes" {
             range_supported = true;
         }
+        println!("=> found acccept-range: {:?}", val);
     }
 
     // only for debugging purposes

@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    io::{BufReader, Read, Write},
+    io::{BufRead, BufReader, Read, Write},
     net::{SocketAddr, TcpStream, ToSocketAddrs},
     str::FromStr,
     time::Duration,
@@ -150,15 +150,10 @@ impl HttpClient {
     }
 
     fn make_response(mut br: BufReader<ReadWrapper>) -> Result<Response<HttpBody>, PError> {
-        let mut buf = [0u8; 4096];
-        let n = br.read(&mut buf)?;
-        println!("number of bytes read: {:?}", n);
+        let mut buf = String::new();
+        br.read_line(&mut buf)?;
 
-        let buff = String::from_utf8(buf.to_vec())?;
-        let mut lines = buff.lines();
-        let parts: Vec<&str> = lines.next().unwrap().split_whitespace().collect();
-
-        println!("response: {:?}", parts);
+        let parts: Vec<&str> = buf.split_whitespace().collect();
         if parts.len() < 3 {
             return Err(make_error("invalid response"));
         }
@@ -166,10 +161,15 @@ impl HttpClient {
         let status_code = StatusCode::from_str(parts[1])?;
         let mut builder = Response::builder().status(status_code);
 
-        for line in lines {
-            if let Some((key, val)) = parse_header(line) {
+        buf.clear();
+
+        // read_line may block forever if no endline found
+        while br.read_line(&mut buf)? > 2 {
+            // len > 2 because read_line always includes \r\n
+            if let Some((key, val)) = parse_header(&buf.trim_end()) {
                 builder = builder.header(key, val);
             }
+            buf.clear();
         }
 
         Ok(builder.body(br).unwrap())
