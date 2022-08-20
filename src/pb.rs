@@ -40,9 +40,18 @@ impl ProgressManager {
 
 fn new_progress_bar(len: u64) -> ProgressBar {
     let pb = ProgressBar::new(len as u64);
-    pb.set_style(ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({binary_bytes_per_sec}, {eta})")
-        .unwrap());
-    // .progress_chars("#>-"));
+    pb.set_style(
+        ProgressStyle::with_template(concat!(
+            "{spinner:.green} ",
+            "[{elapsed_precise}] ",
+            "[{wide_bar:.cyan/blue}] ",
+            "{bytes}/{total_bytes} ",
+            "({binary_bytes_per_sec:^12} ",
+            "{eta:>3})"
+        ))
+        .unwrap(),
+        // .progress_chars("#>-")
+    );
 
     pb
 }
