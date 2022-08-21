@@ -96,17 +96,33 @@ impl HttpClient {
     pub fn connect(url_info: &UrlInfo) -> Result<Self, PError> {
         Ok(Self {
             url_info: url_info.clone(),
-            rw: Some(open_conn(&url_info)?),
+            rw: Some(open_conn(
+                &url_info.host_addr(),
+                &url_info.domain,
+                url_info.is_tls(),
+                5 * 1000,
+            )?),
         })
     }
 
-    pub fn head(&mut self, path: &str) -> Result<Response<HttpBody>, PError> {
-        let req = self.make_request(Method::HEAD, path).body(vec![]).unwrap();
+    pub fn connect_from_url(url: &str) -> Result<Self, PError> {
+        let url_info = UrlInfo::parse(url)?;
+        Self::connect(&url_info)
+    }
+
+    pub fn head(&mut self) -> Result<Response<HttpBody>, PError> {
+        let req = self
+            .make_request(Method::HEAD, &self.url_info.path)
+            .body(vec![])
+            .unwrap();
         self.send_request(&req)
     }
 
-    pub fn get(&mut self, path: &str) -> Result<Response<HttpBody>, PError> {
-        let req = self.make_request(Method::GET, path).body(vec![]).unwrap();
+    pub fn get(&mut self) -> Result<Response<HttpBody>, PError> {
+        let req = self
+            .make_request(Method::GET, &self.url_info.path)
+            .body(vec![])
+            .unwrap();
         self.send_request(&req)
     }
 
@@ -176,17 +192,29 @@ impl HttpClient {
     }
 }
 
-fn open_conn(url_info: &UrlInfo) -> Result<Box<dyn ReadWrite>, PError> {
-    // TODO: allow user to configure duration
-    let duration = Duration::from_secs(5);
-    let stream = TcpStream::connect_timeout(
-        &url_info.host_addr().to_socket_addrs()?.next().unwrap(),
-        duration,
-    )?;
+#[allow(dead_code)]
+pub fn head(url: &str) -> Result<Response<HttpBody>, PError> {
+    HttpClient::connect_from_url(url)?.head()
+}
 
-    if url_info.is_tls() {
+#[allow(dead_code)]
+pub fn get(url: &str) -> Result<Response<HttpBody>, PError> {
+    HttpClient::connect_from_url(url)?.get()
+}
+
+fn open_conn(
+    host_addr: &str,
+    domain: &str,
+    tls: bool,
+    timeout_ms: u64,
+) -> Result<Box<dyn ReadWrite>, PError> {
+    let duration = Duration::from_millis(timeout_ms);
+    let sock_addr = resolve_addr(host_addr)?;
+    let stream = TcpStream::connect_timeout(&sock_addr, duration)?;
+
+    if tls {
         let tls_conn = TlsConnector::new()?;
-        let stream = tls_conn.connect(url_info.domain.as_str(), stream)?;
+        let stream = tls_conn.connect(domain, stream)?;
         Ok(Box::new(stream))
     } else {
         Ok(Box::new(stream))
