@@ -110,7 +110,8 @@ impl HttpClient {
         Self::connect(&url_info)
     }
 
-    pub fn head(&mut self) -> Result<Response<HttpBody>, PError> {
+    /// client move out after this method
+    pub fn head(mut self) -> Result<Response<HttpBody>, PError> {
         let req = self
             .make_request(Method::HEAD, &self.url_info.path)
             .body(vec![])
@@ -118,7 +119,8 @@ impl HttpClient {
         self.send_request(&req)
     }
 
-    pub fn get(&mut self) -> Result<Response<HttpBody>, PError> {
+    /// client move out after this method
+    pub fn get(mut self) -> Result<Response<HttpBody>, PError> {
         let req = self
             .make_request(Method::GET, &self.url_info.path)
             .body(vec![])

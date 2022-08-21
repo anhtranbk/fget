@@ -36,7 +36,7 @@ fn format_byte_length(len: u64) -> String {
     format!("{:.1} {}", value, units[unit_index])
 }
 
-fn get_download_info(client: &mut HttpClient, debug: bool) -> Result<DownloadInfo, PError> {
+fn get_download_info(client: HttpClient, debug: bool) -> Result<DownloadInfo, PError> {
     let resp = client.head()?;
     println!(
         "{} {}",
@@ -121,11 +121,13 @@ pub fn run<T: DownloadObserver>(cfg: &Config, ob: &mut T) -> Result<(), PError> 
         url_info.port
     );
 
-    let mut client = HttpClient::connect(&url_info)?;
+    let client = HttpClient::connect(&url_info)?;
     println!("connected.");
     print!("HTTP request sent, awaiting response...");
 
-    let dlinfo = get_download_info(&mut client, cfg.debug)?;
+    // our http client is one-time client, so we must move it
+    // to let get_download_info use it instead of borrow
+    let dlinfo = get_download_info(client, cfg.debug)?;
     println!(
         "Length: {} ({}), accept-ranges: {} [{}]",
         dlinfo.len,
@@ -138,7 +140,6 @@ pub fn run<T: DownloadObserver>(cfg: &Config, ob: &mut T) -> Result<(), PError> 
         return Err(make_error("content length is zero"));
     }
 
-    // out client is one-time client, so we need to create the new one
     println!("Saving to: '{}'\r\n", url_info.fname);
     download(&cfg, &url_info, &dlinfo, ob)
 }
