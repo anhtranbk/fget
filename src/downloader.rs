@@ -36,7 +36,7 @@ fn format_byte_length(len: u64) -> String {
     format!("{:.1} {}", value, units[unit_index])
 }
 
-fn get_download_info(client: &mut HttpClient) -> Result<DownloadInfo, PError> {
+fn get_download_info(client: &mut HttpClient, debug: bool) -> Result<DownloadInfo, PError> {
     let resp = client.head()?;
     println!(
         "{} {}",
@@ -66,11 +66,13 @@ fn get_download_info(client: &mut HttpClient) -> Result<DownloadInfo, PError> {
         }
     }
 
-    println!("Response headers:");
-    for (key, value) in resp.headers().iter() {
-        println!("=> {}: {}", key, value.to_str().unwrap_or_default());
+    if debug {
+        println!("Response headers:");
+        for (key, value) in resp.headers().iter() {
+            println!("=> {}: {}", key, value.to_str().unwrap_or_default());
+        }
+        println!("");
     }
-    println!("");
 
     Ok(DownloadInfo {
         range_supported,
@@ -123,7 +125,7 @@ pub fn run<T: DownloadObserver>(cfg: &Config, ob: &mut T) -> Result<(), PError> 
     println!("connected.");
     print!("HTTP request sent, awaiting response...");
 
-    let dlinfo = get_download_info(&mut client)?;
+    let dlinfo = get_download_info(&mut client, cfg.debug)?;
     println!(
         "Length: {} ({}), accept-ranges: {} [{}]",
         dlinfo.len,

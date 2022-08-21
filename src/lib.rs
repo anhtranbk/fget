@@ -50,6 +50,7 @@ pub struct Config {
     pub url: String,
     pub out_path: String,
     pub num_threads: u8,
+    pub debug: bool,
 }
 
 impl Config {
@@ -62,14 +63,19 @@ impl Config {
         let out_path = args.get(2).unwrap_or(&String::new()).clone();
 
         let mut num_threads = 4; // default value is 4
+        let mut debug = false;
         if args.len() >= 3 {
             num_threads = args[3].parse::<u8>()?;
+        }
+        if args.len() >= 4 {
+            debug = args[4].parse::<bool>()?;
         }
 
         Ok(Config {
             url,
             out_path,
             num_threads,
+            debug,
         })
     }
 }
