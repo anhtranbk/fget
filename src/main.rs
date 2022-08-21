@@ -3,7 +3,7 @@ use std::env;
 use fget::Config;
 
 mod downloader;
-mod http;
+mod httpx;
 mod pb;
 
 fn main() {

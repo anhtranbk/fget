@@ -78,6 +78,8 @@ pub fn resolve_addr(addr: &str) -> Result<SocketAddr, PError> {
 }
 
 type HttpBody = BufReader<ReadWrapper>;
+type HttpResponse = Response<HttpBody>;
+type HttpHeaders = HashMap<String, String>;
 
 // static DEFAULT_HEADERS: HashMap<&str, &str> = hash_map!(
 //     "User-Agent" => "fget/0.1.0",
@@ -92,6 +94,7 @@ pub struct HttpClient {
     rw: Option<Box<dyn ReadWrite>>,
 }
 
+#[allow(dead_code)]
 impl HttpClient {
     pub fn connect(url_info: &UrlInfo) -> Result<Self, PError> {
         Ok(Self {
@@ -110,29 +113,47 @@ impl HttpClient {
         Self::connect(&url_info)
     }
 
-    /// client move out after this method
-    pub fn head(mut self) -> Result<Response<HttpBody>, PError> {
+    /// send a head request, client will be moved out after this method
+    pub fn head(mut self) -> Result<HttpResponse, PError> {
+        let req = self.make_request(Method::HEAD, None).body(vec![]).unwrap();
+        self.send_request(&req)
+    }
+
+    /// send a head request with custom headers, client will be moved out after this method
+    pub fn head_with_headers(mut self, headers: &HttpHeaders) -> Result<HttpResponse, PError> {
         let req = self
-            .make_request(Method::HEAD, &self.url_info.path)
+            .make_request(Method::HEAD, Some(headers))
             .body(vec![])
             .unwrap();
         self.send_request(&req)
     }
 
-    /// client move out after this method
-    pub fn get(mut self) -> Result<Response<HttpBody>, PError> {
+    /// send a get request, client will be moved out after this method
+    pub fn get(mut self) -> Result<HttpResponse, PError> {
+        let req = self.make_request(Method::GET, None).body(vec![]).unwrap();
+        self.send_request(&req)
+    }
+
+    /// send a get request, client will be moved out after this method
+    pub fn get_with_headers(mut self, headers: &HttpHeaders) -> Result<HttpResponse, PError> {
         let req = self
-            .make_request(Method::GET, &self.url_info.path)
+            .make_request(Method::GET, Some(headers))
             .body(vec![])
             .unwrap();
         self.send_request(&req)
     }
 
-    fn make_request(&self, method: Method, path: &str) -> Builder {
+    fn make_request(&self, method: Method, headers: Option<&HttpHeaders>) -> Builder {
         let mut builder = Request::builder()
             .method(method)
-            .uri(format!("{}", path))
+            .uri(format!("{}", self.url_info.path))
             .header(header::HOST, &self.url_info.domain);
+
+        if let Some(headers) = headers {
+            for (key, val) in headers.iter() {
+                builder = builder.header(key, val);
+            }
+        }
 
         let default_headers: HashMap<&str, &str> = hash_map!(
             "User-Agent" => "fget/0.1.0",
@@ -167,7 +188,7 @@ impl HttpClient {
         Ok(HttpClient::make_response(br)?)
     }
 
-    fn make_response(mut br: BufReader<ReadWrapper>) -> Result<Response<HttpBody>, PError> {
+    fn make_response(mut br: BufReader<ReadWrapper>) -> Result<HttpResponse, PError> {
         let mut buf = String::new();
         br.read_line(&mut buf)?;
 
@@ -195,12 +216,12 @@ impl HttpClient {
 }
 
 #[allow(dead_code)]
-pub fn head(url: &str) -> Result<Response<HttpBody>, PError> {
+pub fn head(url: &str) -> Result<HttpResponse, PError> {
     HttpClient::connect_from_url(url)?.head()
 }
 
 #[allow(dead_code)]
-pub fn get(url: &str) -> Result<Response<HttpBody>, PError> {
+pub fn get(url: &str) -> Result<HttpResponse, PError> {
     HttpClient::connect_from_url(url)?.get()
 }
 
@@ -247,7 +268,7 @@ fn parse_header(header: &str) -> Option<(String, String)> {
 
 #[cfg(test)]
 mod tests {
-    use crate::http::UrlInfo;
+    use crate::httpx::UrlInfo;
 
     #[test]
     fn test_parse_url() {

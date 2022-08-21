@@ -1,11 +1,16 @@
 use crate::{
-    http::{resolve_addr, HttpClient, UrlInfo},
+    httpx::{resolve_addr, HttpClient, UrlInfo},
     Config,
 };
-use fget::{make_error, PError};
+use fget::{make_error, map, PError};
 use http::header;
 
-use std::{io::Read, str};
+use std::{
+    fs::File,
+    io::{Read, Seek, SeekFrom, Write},
+    str,
+    sync::{Arc, Mutex},
+};
 
 pub trait DownloadObserver {
     fn on_download_start(&mut self, idx: u8, len: u64);
@@ -82,28 +87,72 @@ fn get_download_info(client: HttpClient, debug: bool) -> Result<DownloadInfo, PE
     })
 }
 
+fn write_to_file(file: &Arc<Mutex<File>>, buf: &[u8], offset: u64) -> Result<(), PError> {
+    let lock = file.lock();
+    match lock {
+        Ok(mut _file) => {
+            // for readers:
+            // don't need to pay attention to this comment, this is just
+            // a note to help me understand Rust ownership system
+            // we borrow Arc variable as immutable but Arc is owner of the File inside it
+            // so when dereferencing File from Arc we can call seek and write_all methods
+            // (which require a mutable reference) without error
+            _file.seek(SeekFrom::Start(offset))?;
+            _file.write_all(&buf)?;
+
+            Ok(())
+        }
+        Err(_) => Err(make_error("could not get file lock")),
+    }
+}
+
+fn download_part<T: DownloadObserver>(
+    url_info: &UrlInfo,
+    start: u64,
+    end: u64,
+    file: Arc<Mutex<File>>, // moved here
+    ob: &mut T,
+    idx: u8,
+) -> Result<(), PError> {
+    let len = end - start;
+    ob.on_download_start(idx, len);
+
+    let headers = map!(header::RANGE.to_string() => format!("bytes={}-{}", start, end));
+    let resp = HttpClient::connect(&url_info)?.get_with_headers(&headers)?;
+    let mut r = resp.into_body();
+
+    let mut buf = [0u8; 8192];
+    let mut pos = start;
+
+    while pos < end {
+        let n = r.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+
+        // take a slice of buffer from 0 to nth-offset to ensure we only write newly bytes to file
+        write_to_file(&file, &buf[..n], pos)?;
+        pos += n as u64;
+        ob.on_progress(idx, pos);
+    }
+
+    ob.on_download_end(idx);
+    Ok(())
+}
+
 fn download<T: DownloadObserver>(
     cfg: &Config,
     url_info: &UrlInfo,
     dlinfo: &DownloadInfo,
     ob: &mut T,
 ) -> Result<(), PError> {
-    ob.on_download_start(0, dlinfo.len);
-
-    let resp = HttpClient::connect(&url_info)?.get()?;
-    let mut r = resp.into_body();
-    let mut buf = [0u8; 8192];
-    let mut pr = 0u64;
-
-    while pr < dlinfo.len {
-        let n = r.read(&mut buf)?;
-        pr += n as u64;
-        ob.on_progress(0, pr)
+    let mut out_path = &url_info.fname;
+    if cfg.out_path.len() > 0 {
+        out_path = &cfg.out_path;
     }
+    let file = Arc::new(Mutex::new(File::create(out_path)?));
 
-    ob.on_download_end(0);
-
-    Ok(())
+    download_part(url_info, 0, dlinfo.len, file, ob, 0)
 }
 
 pub fn run<T: DownloadObserver>(cfg: &Config, ob: &mut T) -> Result<(), PError> {
