@@ -88,8 +88,7 @@ fn get_download_info(client: HttpClient, debug: bool) -> Result<DownloadInfo, PE
 }
 
 fn write_to_file(file: &Arc<Mutex<File>>, buf: &[u8], offset: u64) -> Result<(), PError> {
-    let lock = file.lock();
-    match lock {
+    match file.lock() {
         Ok(mut _file) => {
             // for readers:
             // don't need to pay attention to this comment, this is just
@@ -114,8 +113,7 @@ fn download_part<T: DownloadObserver>(
     ob: &mut T,
     idx: u8,
 ) -> Result<(), PError> {
-    let len = end - start;
-    ob.on_download_start(idx, len);
+    ob.on_download_start(idx, end - start);
 
     let headers = map!(header::RANGE.to_string() => format!("bytes={}-{}", start, end));
     let resp = HttpClient::connect(&url_info)?.get_with_headers(&headers)?;
@@ -172,7 +170,7 @@ pub fn run<T: DownloadObserver>(cfg: &Config, ob: &mut T) -> Result<(), PError> 
 
     let client = HttpClient::connect(&url_info)?;
     println!("connected.");
-    print!("HTTP request sent, awaiting response...");
+    print!("HTTP request sent, awaiting response... ");
 
     // our http client is one-time client, so we must move it
     // to let get_download_info use it instead of borrow
