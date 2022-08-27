@@ -58,18 +58,32 @@ fn new_progress_bar(len: u64) -> ProgressBar {
 
 #[allow(dead_code)]
 pub fn test_show_pb() {
-    let mut downloaded = 0u64;
     let len: u64 = 243 * 1024 * 1024;
-    let pb = new_progress_bar(len);
+    let mut n = 4;
+    let mut pbs = vec![];
+    let mut vpos = vec![0u64; n];
 
-    while downloaded < len {
-        let new = 750 * 1024;
-        downloaded = min(downloaded + new, len);
-
-        // pb.inc(new as u64);
-        pb.set_position(downloaded as u64);
-        thread::sleep(Duration::from_millis(100));
+    let m = MultiProgress::new();
+    for i in 0..n {
+        let pb = m.insert(i, new_progress_bar(len));
+        pbs.push(pb);
     }
 
-    pb.finish_with_message("downloaded")
+    while n > 0 {
+        for i in 0..4usize {
+            let new = 750 * 1024;
+            let pos = min(vpos[i] + new, len);
+
+            pbs[i].set_position(pos);
+            vpos[i] = pos;
+            thread::sleep(Duration::from_millis(10));
+        }
+
+        if vpos[0] == len {
+            n -= 1;
+        }
+    }
+    for i in 0..4 {
+        pbs[i].finish_with_message(format!("part {} downloaded", i));
+    }
 }
