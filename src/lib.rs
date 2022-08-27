@@ -30,6 +30,7 @@ macro_rules! hash_map_e {
 
 /// box of error (pointer to actual error object)
 pub type PError = Box<dyn Error>;
+pub type VoidResult = Result<(), PError>;
 
 #[derive(Debug, Clone)]
 struct FgetError(String);
