@@ -9,17 +9,15 @@ use std::{
     cmp,
     fs::{self, File},
     io::{BufWriter, Read, Write},
-    str,
     sync::mpsc::{self, Sender},
     thread,
 };
 
 pub trait DownloadObserver {
+    fn on_init(&mut self, len: usize);
     fn on_download_start(&mut self, idx: u8, len: u64);
     fn on_progress(&mut self, idx: u8, pos: u64);
     fn on_download_end(&mut self, idx: u8);
-
-    fn on_message(&mut self, msg: &str);
 }
 
 struct DownloadInfo {
@@ -31,7 +29,7 @@ struct DownloadInfo {
 
 #[derive(Debug)]
 enum DownloadStatus {
-    Started(u8, u64, u64),
+    Started(u8, u64),
     Progress(u8, u64),
     Failed(u8, String),
     Done(u8, String),
@@ -114,7 +112,7 @@ fn download_part(
             format!("server response error: {}", resp.status().as_u16(),).as_str(),
         ));
     } else {
-        sender.send(DownloadStatus::Started(idx, start, end))?;
+        sender.send(DownloadStatus::Started(idx, end - start))?;
     }
 
     let mut r = resp.into_body();
@@ -123,7 +121,7 @@ fn download_part(
 
     let dir = std::env::temp_dir();
     let fpath = format!(
-        "{}/{}.{}",
+        "{}{}.{}",
         dir.to_str().unwrap_or("/tmp"),
         url_info.fname,
         idx
@@ -139,7 +137,7 @@ fn download_part(
         // take a slice of buffer from 0 to nth-offset to ensure we only write newly bytes to file
         file.write_all(&buf[..n])?;
         pos += n as u64;
-        sender.send(DownloadStatus::Progress(idx, pos))?;
+        sender.send(DownloadStatus::Progress(idx, pos - start))?;
     }
 
     sender.send(DownloadStatus::Done(idx, fpath))?;
@@ -179,10 +177,11 @@ fn download<T: DownloadObserver>(
     dlinfo: &DownloadInfo,
     ob: &mut T,
 ) -> Result<(), PError> {
-    let mut out_path = &url_info.fname;
-    if cfg.out_path.len() > 0 {
-        out_path = &cfg.out_path;
-    }
+    let out_path = if cfg.out_path.len() > 0 {
+        &cfg.out_path
+    } else {
+        &url_info.fname
+    };
 
     let num_threads = if dlinfo.range_supported {
         cfg.num_threads as u64
@@ -190,6 +189,9 @@ fn download<T: DownloadObserver>(
         1
     };
     let chunk_size = (dlinfo.len + num_threads - 1) / num_threads;
+
+    // update UI (progress bar) before starting downloads
+    ob.on_init(num_threads as usize);
 
     let (sender, recv) = mpsc::channel();
     let mut handles = vec![];
@@ -201,11 +203,11 @@ fn download<T: DownloadObserver>(
 
         let _sender = sender.clone();
         let _url_info = url_info.clone();
-        let idx = i as u8;
+        let _idx = i as u8;
         let handle = thread::spawn(move || {
-            if let Err(err) = download_part(&_url_info, start, end, idx, &_sender) {
+            if let Err(err) = download_part(&_url_info, start, end, _idx, &_sender) {
                 _sender
-                    .send(DownloadStatus::Failed(idx, err.to_string()))
+                    .send(DownloadStatus::Failed(_idx, err.to_string()))
                     .unwrap();
             }
         });
@@ -213,9 +215,10 @@ fn download<T: DownloadObserver>(
         handles.push(handle);
     }
 
+    // block until all download threads are done or an error is encountered
     for msg in recv {
         match msg {
-            DownloadStatus::Started(idx, start, end) => ob.on_download_start(idx, end - start),
+            DownloadStatus::Started(idx, len) => ob.on_download_start(idx, len),
             DownloadStatus::Progress(idx, pos) => ob.on_progress(idx, pos),
             DownloadStatus::Failed(idx, err) => {
                 ob.on_download_end(idx);
@@ -230,6 +233,7 @@ fn download<T: DownloadObserver>(
         }
     }
 
+    // merge all download parts into one file
     merge_parts(&out_path, &dlparts)?;
 
     for handle in handles {

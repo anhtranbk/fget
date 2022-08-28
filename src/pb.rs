@@ -1,19 +1,21 @@
 use std::{cmp::min, thread, time::Duration};
 
 use crate::downloader::DownloadObserver;
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 
 pub struct ProgressManager {
+    m: MultiProgress,
     pbs: Vec<ProgressBar>,
 }
 
 impl DownloadObserver for ProgressManager {
-    fn on_download_start(&mut self, _: u8, len: u64) {
-        self.pbs.push(new_progress_bar(len));
+    fn on_download_start(&mut self, idx: u8, len: u64) {
+        if let Some(pb) = self.pbs.get_mut(idx as usize) {
+            pb.set_length(len);
+        }
     }
 
     fn on_progress(&mut self, idx: u8, pos: u64) {
-        // println!("on progress for {}: {:?}", idx, pos);
         if let Some(pb) = self.pbs.get_mut(idx as usize) {
             pb.set_position(pos);
         }
@@ -25,15 +27,18 @@ impl DownloadObserver for ProgressManager {
         }
     }
 
-    fn on_message(&mut self, msg: &str) {
-        println!("on message {}", msg);
+    fn on_init(&mut self, len: usize) {
+        for i in 0..len {
+            self.pbs.push(self.m.insert(i, new_progress_bar(0)));
+        }
     }
 }
 
 impl ProgressManager {
-    pub fn new(size: usize) -> Self {
+    pub fn new() -> Self {
         Self {
-            pbs: Vec::with_capacity(size),
+            pbs: vec![],
+            m: MultiProgress::new(),
         }
     }
 }
@@ -49,8 +54,8 @@ fn new_progress_bar(len: u64) -> ProgressBar {
             "({binary_bytes_per_sec:^12} ",
             "{eta:>3})"
         ))
-        .unwrap(),
-        // .progress_chars("#>-")
+        .unwrap()
+        .progress_chars("#>-"),
     );
 
     pb

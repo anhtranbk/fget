@@ -12,7 +12,7 @@ fn main() {
         panic!("Problem parsing arguments: {err}");
     });
 
-    let mut pbm = pb::ProgressManager::new(cfg.num_threads as usize);
+    let mut pbm = pb::ProgressManager::new();
     if let Err(e) = downloader::run(&cfg, &mut pbm) {
         eprintln!("An error occurred: {}", e)
     }
