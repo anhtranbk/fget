@@ -151,14 +151,16 @@ fn merge_parts(fpath: &String, parts: &Vec<String>) -> VoidResult {
     let mut buf = [0u8; 8192];
 
     for part in parts {
-        println!("Mergeing part: {:?}", part);
+        println!("Merge part: {:?}", part);
         let mut r = File::open(part)?;
-        let n = r.read(&mut buf)?;
-        if n > 0 {
-            w.write_all(&buf[..n])?;
-        } else {
-            println!("Finished reading part {:?}", part);
-            continue;
+        loop {
+            let n = r.read(&mut buf)?;
+            if n > 0 {
+                w.write_all(&buf[..n])?;
+            } else {
+                println!("Finished reading part {:?}", part);
+                break;
+            }
         }
     }
 
@@ -216,6 +218,7 @@ fn download<T: DownloadObserver>(
     }
 
     // block until all download threads are done or an error is encountered
+    let mut cnt = num_threads; // number of remaining downloads
     for msg in recv {
         match msg {
             DownloadStatus::Started(idx, len) => ob.on_download_start(idx, len),
@@ -229,6 +232,11 @@ fn download<T: DownloadObserver>(
             DownloadStatus::Done(idx, fpath) => {
                 dlparts[idx as usize] = fpath;
                 ob.on_download_end(idx);
+
+                cnt -= 1;
+                if cnt == 0 {
+                    break;
+                }
             }
         }
     }
