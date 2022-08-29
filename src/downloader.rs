@@ -56,11 +56,6 @@ fn get_download_info(client: HttpClient, debug: bool) -> Result<DownloadInfo, PE
         resp.status().as_u16(),
         resp.status().canonical_reason().unwrap_or_default()
     );
-    if resp.status().as_u16() / 100 != 2 {
-        return Err(make_error(
-            format!("server response error: {}", resp.status().as_u16(),).as_str(),
-        ));
-    }
 
     let mut len = 0u64;
     let mut range_supported = false;
@@ -107,14 +102,6 @@ fn download_part(
     );
     let resp = HttpClient::connect(&url_info)?.get_with_headers(&headers)?;
 
-    if resp.status().as_u16() / 100 != 2 {
-        return Err(make_error(
-            format!("server response error: {}", resp.status().as_u16(),).as_str(),
-        ));
-    } else {
-        sender.send(DownloadStatus::Started(idx, end - start))?;
-    }
-
     let mut r = resp.into_body();
     let mut buf = [0u8; 8192];
     let mut pos = start;
@@ -127,6 +114,9 @@ fn download_part(
         idx
     );
     let mut file = File::create(&fpath)?;
+
+    // start fetching data file from server
+    sender.send(DownloadStatus::Started(idx, end - start))?;
 
     while pos < end {
         let n = r.read(&mut buf)?;

@@ -198,8 +198,13 @@ impl HttpClient {
         }
 
         let status_code = StatusCode::from_str(parts[1])?;
-        let mut builder = Response::builder().status(status_code);
+        if status_code.as_u16() / 100 >= 4 {
+            return Err(make_error(
+                format!("server response error: {}", status_code.as_u16(),).as_str(),
+            ));
+        }
 
+        let mut builder = Response::builder().status(status_code);
         buf.clear();
 
         // read_line may block forever if no endline found
