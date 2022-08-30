@@ -141,14 +141,12 @@ fn merge_parts(fpath: &String, parts: &Vec<String>) -> VoidResult {
     let mut buf = [0u8; 8192];
 
     for part in parts {
-        println!("Merge part: {:?}", part);
         let mut r = File::open(part)?;
         loop {
             let n = r.read(&mut buf)?;
             if n > 0 {
                 w.write_all(&buf[..n])?;
             } else {
-                println!("Finished reading part {:?}", part);
                 break;
             }
         }
