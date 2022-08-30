@@ -8,7 +8,7 @@ mod pb;
 
 fn main() {
     let args = env::args().collect::<Vec<String>>();
-    let cfg = Config::build(&args).unwrap_or_else(|err| {
+    let cfg = Config::build(&args[1..]).unwrap_or_else(|err| {
         panic!("Problem parsing arguments: {err}");
     });
 

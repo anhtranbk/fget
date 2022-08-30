@@ -56,20 +56,23 @@ pub struct Config {
 
 impl Config {
     pub fn build(args: &[String]) -> Result<Config, PError> {
-        if args.len() < 2 {
+        if args.len() < 1 {
             return Err(make_error("not enough arguments"));
         }
 
-        let url = args[1].clone();
-        let out_path = args.get(2).unwrap_or(&String::new()).clone();
+        let url = args[0].clone();
+        let out_path = args.get(1).unwrap_or(&String::new()).clone();
 
         let mut num_threads = 4; // default value is 4
         let mut debug = false;
         if args.len() >= 3 {
-            num_threads = args[3].parse::<u8>()?;
+            num_threads = args[2].parse::<u8>()?;
+            if num_threads <= 0 || num_threads > 32 {
+                return Err(make_error("invalid number of threads, must be between 1 and 32"));
+            }
         }
         if args.len() >= 4 {
-            debug = args[4].parse::<bool>()?;
+            debug = args[3].parse::<bool>()?;
         }
 
         Ok(Config {
