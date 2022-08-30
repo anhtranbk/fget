@@ -140,12 +140,14 @@ fn merge_parts(fpath: &String, parts: &Vec<String>) -> VoidResult {
     let mut w = BufWriter::new(File::create(&tmp_path)?);
     let mut buf = [0u8; 8192];
 
+    let mut len = 0u64;
     for part in parts {
         let mut r = File::open(part)?;
         loop {
             let n = r.read(&mut buf)?;
             if n > 0 {
                 w.write_all(&buf[..n])?;
+                len += n as u64;
             } else {
                 break;
             }
@@ -155,8 +157,8 @@ fn merge_parts(fpath: &String, parts: &Vec<String>) -> VoidResult {
     w.flush()?;
     drop(w); // drop the file to close it before renaming
 
-    println!("Rename temp file from {} to {}", tmp_path, fpath);
     fs::rename(&tmp_path, &fpath)?;
+    println!("File downloaded to '{}': {} ({})", fpath, len, format_byte_length(len));
 
     Ok(())
 }
