@@ -24,7 +24,6 @@ struct DownloadInfo {
     range_supported: bool,
     content_type: String,
     len: u64,
-    _code: u16,
 }
 
 #[derive(Debug)]
@@ -80,7 +79,6 @@ fn get_download_info(resp: HttpResponse, debug: bool) -> Result<DownloadInfo, PE
         range_supported,
         len,
         content_type,
-        _code: resp.status().as_u16(),
     })
 }
 

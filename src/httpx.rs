@@ -11,13 +11,13 @@ use native_tls::TlsConnector;
 
 use fget::{hash_map, make_error, PError};
 
-pub struct ReadWrapper(Box<dyn ReadWrite>);
-
 pub trait ReadWrite: Read + Write {}
 
 impl<T: Read + Write> ReadWrite for T {}
 
-impl Read for ReadWrapper {
+pub struct ToRead(Box<dyn ReadWrite>);
+
+impl Read for ToRead {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         self.0.read(buf)
     }
@@ -77,7 +77,7 @@ pub fn resolve_addr(addr: &str) -> Result<SocketAddr, PError> {
     Ok(sock_addr)
 }
 
-pub type HttpBody = BufReader<ReadWrapper>;
+pub type HttpBody = BufReader<ToRead>;
 pub type HttpResponse = Response<HttpBody>;
 pub type HttpHeaders = HashMap<String, String>;
 
@@ -215,11 +215,11 @@ impl HttpClient {
         rw.write_all(data.as_bytes())?;
         rw.flush()?;
 
-        let br = BufReader::new(ReadWrapper(rw));
+        let br = BufReader::new(ToRead(rw));
         Ok(HttpClient::make_response(br)?)
     }
 
-    fn make_response(mut br: BufReader<ReadWrapper>) -> Result<HttpResponse, PError> {
+    fn make_response(mut br: BufReader<ToRead>) -> Result<HttpResponse, PError> {
         let mut buf = String::new();
         br.read_line(&mut buf)?;
 
@@ -272,7 +272,7 @@ impl HttpClientBuilder {
         }
     }
 
-    pub fn from(self, url: &str) -> Result<HttpClientBuilder, PError> {
+    pub fn from_url(self, url: &str) -> Result<HttpClientBuilder, PError> {
         Ok(self.from_url_info(&UrlInfo::parse(url)?))
     }
 
