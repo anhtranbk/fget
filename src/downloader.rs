@@ -83,7 +83,7 @@ fn get_download_info(resp: HttpResponse, debug: bool) -> Result<DownloadInfo, PE
 }
 
 fn download_part(
-    url_info: &UrlInfo,
+    urlinfo: &UrlInfo,
     start: u64,
     end: u64,
     idx: u8,
@@ -93,9 +93,9 @@ fn download_part(
         header::RANGE.to_string() => format!("bytes={}-{}", start, end)
     );
     let resp = HttpClient::builder()
-        .from_url_info(&url_info)
+        .from_url_info(&urlinfo)
         .build()?
-        .get_with_headers(&url_info.path, &headers)?;
+        .get_with_headers(&urlinfo.path, &headers)?;
 
     let mut r = resp.into_body();
     let mut buf = [0u8; 8192];
@@ -105,7 +105,7 @@ fn download_part(
     let fpath = format!(
         "{}{}.{}",
         dir.to_str().unwrap_or("/tmp"),
-        url_info.fname,
+        urlinfo.fname,
         idx
     );
     let mut file = File::create(&fpath)?;
@@ -165,14 +165,14 @@ fn merge_parts(fpath: &String, parts: &Vec<String>) -> VoidResult {
 
 fn download<T: DownloadObserver>(
     cfg: &Config,
-    url_info: &UrlInfo,
+    urlinfo: &UrlInfo,
     dlinfo: &DownloadInfo,
     ob: &mut T,
 ) -> Result<(), PError> {
     let out_path = if cfg.out_path.len() > 0 {
         &cfg.out_path
     } else {
-        &url_info.fname
+        &urlinfo.fname
     };
 
     let num_threads = if dlinfo.range_supported {
@@ -194,10 +194,10 @@ fn download<T: DownloadObserver>(
         let end = cmp::min((i + 1) * chunk_size - 1, dlinfo.len - 1);
 
         let _sender = sender.clone();
-        let _url_info = url_info.clone();
+        let _urlinfo = urlinfo.clone();
         let _idx = i as u8;
         let handle = thread::spawn(move || {
-            if let Err(err) = download_part(&_url_info, start, end, _idx, &_sender) {
+            if let Err(err) = download_part(&_urlinfo, start, end, _idx, &_sender) {
                 _sender
                     .send(DownloadStatus::Failed(_idx, err.to_string()))
                     .unwrap();
@@ -243,26 +243,26 @@ fn download<T: DownloadObserver>(
 
 pub fn run<T: DownloadObserver>(cfg: &Config, ob: &mut T) -> Result<(), PError> {
     println!("Downloading file at {}", cfg.url);
-    let url_info = UrlInfo::parse(&cfg.url)?;
+    let urlinfo = UrlInfo::parse(&cfg.url)?;
 
-    print!("Resolving {}... ", url_info.domain);
-    let sock_addr = resolve_addr(&url_info.host_addr())?;
+    print!("Resolving {}... ", urlinfo.domain);
+    let sock_addr = resolve_addr(&urlinfo.host_addr())?;
     println!("{}", sock_addr.ip());
 
     print!(
         "Connecting to ({})|{}:{}... ",
-        url_info.domain,
+        urlinfo.domain,
         sock_addr.ip(),
-        url_info.port
+        urlinfo.port
     );
 
-    let client = HttpClient::builder().from_url_info(&url_info).build()?;
+    let client = HttpClient::builder().from_url_info(&urlinfo).build()?;
     println!("connected.");
     print!("HTTP request sent, awaiting response... ");
 
     // our http client is one-time client, so we must move it
     // to let get_download_info use it instead of borrow
-    let resp = client.head(&url_info.path)?;
+    let resp = client.head(&urlinfo.path)?;
     println!(
         "{} {}",
         resp.status().as_u16(),
@@ -282,6 +282,6 @@ pub fn run<T: DownloadObserver>(cfg: &Config, ob: &mut T) -> Result<(), PError> 
         return Err(make_error("content length is zero"));
     }
 
-    println!("Saving to: '{}'\r\n", url_info.fname);
-    download(&cfg, &url_info, &dlinfo, ob)
+    println!("Saving to: '{}'\r\n", urlinfo.fname);
+    download(&cfg, &urlinfo, &dlinfo, ob)
 }

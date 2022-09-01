@@ -276,12 +276,12 @@ impl HttpClientBuilder {
         Ok(self.from_url_info(&UrlInfo::parse(url)?))
     }
 
-    pub fn from_url_info(mut self, url_info: &UrlInfo) -> HttpClientBuilder {
-        self.host_addr = url_info.host_addr();
-        self.tls = url_info.is_tls();
+    pub fn from_url_info(mut self, urlinfo: &UrlInfo) -> HttpClientBuilder {
+        self.host_addr = urlinfo.host_addr();
+        self.tls = urlinfo.is_tls();
 
         self.domain.clear();
-        self.domain += &url_info.domain;
+        self.domain += &urlinfo.domain;
 
         self
     }
@@ -375,19 +375,19 @@ mod tests {
     #[test]
     fn test_parse_url() {
         let url = "https://download.virtualbox.org/virtualbox/7.0.8/VirtualBox-7.0.8_BETA4-156879-macOSArm64.dmg";
-        let url_info = UrlInfo::parse(url).unwrap();
+        let urlinfo = UrlInfo::parse(url).unwrap();
 
-        assert_eq!("https", url_info.scheme.as_str());
-        assert_eq!("download.virtualbox.org", url_info.domain.as_str());
+        assert_eq!("https", urlinfo.scheme.as_str());
+        assert_eq!("download.virtualbox.org", urlinfo.domain.as_str());
         assert_eq!(
             "/virtualbox/7.0.8/VirtualBox-7.0.8_BETA4-156879-macOSArm64.dmg",
-            url_info.path.as_str()
+            urlinfo.path.as_str()
         );
         assert_eq!(
             "VirtualBox-7.0.8_BETA4-156879-macOSArm64.dmg",
-            url_info.fname.as_str()
+            urlinfo.fname.as_str()
         );
-        assert_eq!(true, url_info.is_tls());
-        assert_eq!(443, url_info.port);
+        assert_eq!(true, urlinfo.is_tls());
+        assert_eq!(443, urlinfo.port);
     }
 }
