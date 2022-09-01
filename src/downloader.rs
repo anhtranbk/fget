@@ -1,5 +1,5 @@
 use crate::{
-    httpx::{resolve_addr, HttpClient, UrlInfo},
+    httpx::{resolve_addr, HttpClient, HttpResponse, UrlInfo},
     Config,
 };
 use fget::{make_error, map, PError, VoidResult};
@@ -35,6 +35,7 @@ enum DownloadStatus {
     Done(u8, String),
 }
 
+/// format byte length in bytes to human readable
 fn format_byte_length(len: u64) -> String {
     let units = ["B", "kB", "MB", "GB", "TB"];
 
@@ -49,14 +50,7 @@ fn format_byte_length(len: u64) -> String {
     format!("{:.1} {}", value, units[unit_index])
 }
 
-fn get_download_info(client: HttpClient, debug: bool) -> Result<DownloadInfo, PError> {
-    let resp = client.head()?;
-    println!(
-        "{} {}",
-        resp.status().as_u16(),
-        resp.status().canonical_reason().unwrap_or_default()
-    );
-
+fn get_download_info(resp: HttpResponse, debug: bool) -> Result<DownloadInfo, PError> {
     let mut len = 0u64;
     let mut range_supported = false;
     let mut content_type = String::new();
@@ -100,7 +94,10 @@ fn download_part(
     let headers = map!(
         header::RANGE.to_string() => format!("bytes={}-{}", start, end)
     );
-    let resp = HttpClient::connect(&url_info)?.get_with_headers(&headers)?;
+    let resp = HttpClient::builder()
+        .from_url_info(&url_info)
+        .build()?
+        .get_with_headers(&url_info.path, &headers)?;
 
     let mut r = resp.into_body();
     let mut buf = [0u8; 8192];
@@ -158,7 +155,12 @@ fn merge_parts(fpath: &String, parts: &Vec<String>) -> VoidResult {
     drop(w); // drop the file to close it before renaming
 
     fs::rename(&tmp_path, &fpath)?;
-    println!("File downloaded to '{}': {} ({})", fpath, len, format_byte_length(len));
+    println!(
+        "File downloaded to '{}': {} ({})",
+        fpath,
+        len,
+        format_byte_length(len)
+    );
 
     Ok(())
 }
@@ -242,7 +244,7 @@ fn download<T: DownloadObserver>(
 }
 
 pub fn run<T: DownloadObserver>(cfg: &Config, ob: &mut T) -> Result<(), PError> {
-    println!("Downloading file at {}...", cfg.url);
+    println!("Downloading file at {}", cfg.url);
     let url_info = UrlInfo::parse(&cfg.url)?;
 
     print!("Resolving {}... ", url_info.domain);
@@ -256,13 +258,20 @@ pub fn run<T: DownloadObserver>(cfg: &Config, ob: &mut T) -> Result<(), PError> 
         url_info.port
     );
 
-    let client = HttpClient::connect(&url_info)?;
+    let client = HttpClient::builder().from_url_info(&url_info).build()?;
     println!("connected.");
     print!("HTTP request sent, awaiting response... ");
 
     // our http client is one-time client, so we must move it
     // to let get_download_info use it instead of borrow
-    let dlinfo = get_download_info(client, cfg.debug)?;
+    let resp = client.head(&url_info.path)?;
+    println!(
+        "{} {}",
+        resp.status().as_u16(),
+        resp.status().canonical_reason().unwrap_or_default()
+    );
+
+    let dlinfo = get_download_info(resp, cfg.debug)?;
     println!(
         "Length: {} ({}), accept-ranges: {} [{}]",
         dlinfo.len,

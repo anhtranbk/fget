@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     io::{BufRead, BufReader, Read, Write},
     net::{SocketAddr, TcpStream, ToSocketAddrs},
-    str::FromStr,
+    str::{self, FromStr},
     time::Duration,
 };
 
@@ -77,9 +77,9 @@ pub fn resolve_addr(addr: &str) -> Result<SocketAddr, PError> {
     Ok(sock_addr)
 }
 
-type HttpBody = BufReader<ReadWrapper>;
-type HttpResponse = Response<HttpBody>;
-type HttpHeaders = HashMap<String, String>;
+pub type HttpBody = BufReader<ReadWrapper>;
+pub type HttpResponse = Response<HttpBody>;
+pub type HttpHeaders = HashMap<String, String>;
 
 // static DEFAULT_HEADERS: HashMap<&str, &str> = hash_map!(
 //     "User-Agent" => "fget/0.1.0",
@@ -88,66 +88,97 @@ type HttpHeaders = HashMap<String, String>;
 //     "Connection" => "Keep-Alive"
 // );
 
+const DEFAULT_TIMEOUT_MS: u64 = 5 * 1000;
+const DEFAULT_REDIRECT_POLICY: RedirectPolicy = RedirectPolicy::Follow(10);
+
 /// One-time http client
 pub struct HttpClient {
-    url_info: UrlInfo,
+    host_addr: String,
     rw: Option<Box<dyn ReadWrite>>,
 }
 
 #[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub enum RedirectPolicy {
+    Follow(u8), // maximum number of redirects
+    None,       // do not follow redirects
+}
+
+#[derive(Debug, Clone)]
+pub struct HttpConfig {
+    redirect_policy: RedirectPolicy,
+    timeout_ms: u64,
+}
+
+#[allow(dead_code)]
 impl HttpClient {
-    pub fn connect(url_info: &UrlInfo) -> Result<Self, PError> {
+    pub fn builder() -> HttpClientBuilder {
+        HttpClientBuilder::new()
+    }
+
+    pub fn connect(
+        host_addr: &str,
+        domain: &str,
+        tls: bool,
+        cfg: &HttpConfig,
+    ) -> Result<Self, PError> {
         Ok(Self {
-            url_info: url_info.clone(),
-            rw: Some(open_conn(
-                &url_info.host_addr(),
-                &url_info.domain,
-                url_info.is_tls(),
-                5 * 1000,
-            )?),
+            host_addr: host_addr.to_string(),
+            rw: Some(open_conn(host_addr, domain, tls, cfg.timeout_ms)?),
         })
     }
 
-    pub fn connect_from_url(url: &str) -> Result<Self, PError> {
-        let url_info = UrlInfo::parse(url)?;
-        Self::connect(&url_info)
-    }
-
-    /// send a head request, client will be moved out after this method
-    pub fn head(mut self) -> Result<HttpResponse, PError> {
-        let req = self.make_request(Method::HEAD, None).body(vec![]).unwrap();
-        self.send_request(&req)
-    }
-
-    /// send a head request with custom headers, client will be moved out after this method
-    pub fn head_with_headers(mut self, headers: &HttpHeaders) -> Result<HttpResponse, PError> {
+    /// send a head request, because of one-time so client will be moved out after this method
+    pub fn head(mut self, path: &str) -> Result<HttpResponse, PError> {
         let req = self
-            .make_request(Method::HEAD, Some(headers))
+            .make_request(Method::HEAD, path, None)
             .body(vec![])
             .unwrap();
         self.send_request(&req)
     }
 
-    /// send a get request, client will be moved out after this method
-    pub fn get(mut self) -> Result<HttpResponse, PError> {
-        let req = self.make_request(Method::GET, None).body(vec![]).unwrap();
-        self.send_request(&req)
-    }
-
-    /// send a get request, client will be moved out after this method
-    pub fn get_with_headers(mut self, headers: &HttpHeaders) -> Result<HttpResponse, PError> {
+    /// send a head request with custom headers, because of one-time,
+    /// so client will be moved out after this method
+    pub fn head_with_headers(
+        mut self,
+        path: &str,
+        headers: &HttpHeaders,
+    ) -> Result<HttpResponse, PError> {
         let req = self
-            .make_request(Method::GET, Some(headers))
+            .make_request(Method::HEAD, path, Some(headers))
             .body(vec![])
             .unwrap();
         self.send_request(&req)
     }
 
-    fn make_request(&self, method: Method, headers: Option<&HttpHeaders>) -> Builder {
+    /// send a get request, because of one-time, so client will be moved out after this method
+    pub fn get(mut self, path: &str) -> Result<HttpResponse, PError> {
+        let req = self
+            .make_request(Method::GET, path, None)
+            .body(vec![])
+            .unwrap();
+        self.send_request(&req)
+    }
+
+    /// send a get request with custom headers, because of one-time,
+    /// so client will be moved out after this method
+    pub fn get_with_headers(
+        mut self,
+        path: &str,
+        headers: &HttpHeaders,
+    ) -> Result<HttpResponse, PError> {
+        let req = self
+            .make_request(Method::GET, path, Some(headers))
+            .body(vec![])
+            .unwrap();
+        self.send_request(&req)
+    }
+
+    fn make_request(&self, method: Method, path: &str, headers: Option<&HttpHeaders>) -> Builder {
         let mut builder = Request::builder()
             .method(method)
-            .uri(format!("{}", self.url_info.path))
-            .header(header::HOST, &self.url_info.domain);
+            .uri(path)
+            .header(header::HOST, &self.host_addr);
 
         if let Some(headers) = headers {
             for (key, val) in headers.iter() {
@@ -220,14 +251,93 @@ impl HttpClient {
     }
 }
 
+pub struct HttpClientBuilder {
+    host_addr: String,
+    tls: bool,
+    domain: String,
+    cfg: HttpConfig,
+}
+
+#[allow(dead_code)]
+impl HttpClientBuilder {
+    pub fn new() -> HttpClientBuilder {
+        HttpClientBuilder {
+            host_addr: String::new(),
+            tls: false,
+            domain: String::new(),
+            cfg: HttpConfig {
+                redirect_policy: DEFAULT_REDIRECT_POLICY,
+                timeout_ms: DEFAULT_TIMEOUT_MS,
+            },
+        }
+    }
+
+    pub fn from(self, url: &str) -> Result<HttpClientBuilder, PError> {
+        Ok(self.from_url_info(&UrlInfo::parse(url)?))
+    }
+
+    pub fn from_url_info(mut self, url_info: &UrlInfo) -> HttpClientBuilder {
+        self.host_addr = url_info.host_addr();
+        self.tls = url_info.is_tls();
+
+        self.domain.clear();
+        self.domain += &url_info.domain;
+
+        self
+    }
+
+    pub fn with_timeout_ms(mut self, timeout_ms: u64) -> HttpClientBuilder {
+        self.cfg.timeout_ms = timeout_ms;
+        self
+    }
+
+    pub fn with_redirect_policy(mut self, policy: RedirectPolicy) -> HttpClientBuilder {
+        self.cfg.redirect_policy = policy;
+        self
+    }
+
+    pub fn with_host_addr(mut self, addr: &str) -> HttpClientBuilder {
+        self.host_addr.clear();
+        self.host_addr.push_str(addr);
+        self
+    }
+
+    pub fn with_tls(mut self, domain: &str) -> HttpClientBuilder {
+        self.domain.clear();
+        self.domain.push_str(domain);
+        self
+    }
+
+    pub fn build(self) -> Result<HttpClient, PError> {
+        if self.host_addr.is_empty() {
+            return Err(make_error("no host_addr specified"));
+        }
+
+        HttpClient::connect(
+            self.host_addr.as_str(),
+            self.domain.as_str(),
+            self.tls,
+            &self.cfg,
+        )
+    }
+}
+
 #[allow(dead_code)]
 pub fn head(url: &str) -> Result<HttpResponse, PError> {
-    HttpClient::connect_from_url(url)?.head()
+    let ui = UrlInfo::parse(url)?;
+    HttpClient::builder()
+        .from_url_info(&ui)
+        .build()?
+        .head(&ui.path)
 }
 
 #[allow(dead_code)]
 pub fn get(url: &str) -> Result<HttpResponse, PError> {
-    HttpClient::connect_from_url(url)?.get()
+    let ui = UrlInfo::parse(url)?;
+    HttpClient::builder()
+        .from_url_info(&ui)
+        .build()?
+        .get(&ui.path)
 }
 
 fn open_conn(
@@ -248,19 +358,6 @@ fn open_conn(
         Ok(Box::new(stream))
     }
 }
-
-// struct RW(Rc<dyn Read>, Rc<dyn Write>);
-
-// fn open_conn2(url_info: &UrlInfo) -> Result<RW, PError> {
-//     let mut stream = TcpStream::connect(&url_info.host_addr())?;
-//     if url_info.is_tls() {
-//         let tls_conn = TlsConnector::new()?;
-//         let stream = tls_conn.connect(url_info.domain.as_str(), stream)?;
-//         Ok(RW(Rc::new(stream), Rc::clone(&stream)))
-//     } else {
-//         Ok(RW(Rc::new(stream), Rc::clone(&stream)))
-//     }
-// }
 
 fn parse_header(header: &str) -> Option<(String, String)> {
     let parts: Vec<&str> = header.split(":").collect();
