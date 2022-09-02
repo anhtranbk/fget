@@ -373,13 +373,13 @@ fn parse_host_and_port<'a>(addr: &'a str, scheme: &str) -> Result<(&'a str, u16)
     }
 }
 
-fn parse_header(header: &str) -> Option<(String, String)> {
+fn parse_header(header: &str) -> Option<(&str, &str)> {
     let parts: Vec<&str> = header.split(":").collect();
     if parts.len() != 2 {
         return None;
     }
 
-    Some((parts[0].trim().to_string(), parts[1].trim().to_string()))
+    Some((parts[0].trim(), parts[1].trim()))
 }
 
 #[cfg(test)]
