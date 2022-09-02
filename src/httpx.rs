@@ -36,14 +36,9 @@ impl UrlInfo {
     pub fn parse(url: &str) -> Result<UrlInfo, PError> {
         let parts: Vec<&str> = url.split("/").collect();
         let scheme = &parts[0][..parts[0].len() - 1];
-        let host = parts[2];
-        let port = match scheme {
-            "http" => 80,
-            "https" => 443,
-            _ => return Err(make_error("Invalid scheme")),
-        };
-
+        let (host, port) = parse_host_and_port(parts[2], scheme)?;
         let query_idx = parts[0].len() + parts[1].len() + parts[2].len() + 2;
+
         Ok(UrlInfo {
             scheme: scheme.to_string(),
             domain: host.to_string(),
@@ -359,6 +354,25 @@ fn open_conn(
     }
 }
 
+fn parse_host_and_port<'a>(addr: &'a str, scheme: &str) -> Result<(&'a str, u16), PError> {
+    if addr.contains(":") {
+        let parts: Vec<&str> = addr.split(":").collect();
+        if parts.len() != 2 {
+            return Err(make_error("Invalid address"));
+        }
+
+        Ok((parts[0], parts[1].parse::<u16>()?))
+    } else {
+        let port = match scheme {
+            "http" => 80,
+            "https" => 443,
+            _ => return Err(make_error("Invalid scheme")),
+        };
+
+        Ok((addr, port))
+    }
+}
+
 fn parse_header(header: &str) -> Option<(String, String)> {
     let parts: Vec<&str> = header.split(":").collect();
     if parts.len() != 2 {
@@ -389,5 +403,20 @@ mod tests {
         );
         assert_eq!(true, urlinfo.is_tls());
         assert_eq!(443, urlinfo.port);
+        assert_eq!("download.virtualbox.org:443", urlinfo.host_addr());
+    }
+
+    #[test]
+    fn test_parse_url_custom_port() {
+        let url = "http://localhost:8080/download/GoTiengViet.dmg";
+        let urlinfo = UrlInfo::parse(url).unwrap();
+
+        assert_eq!("http", urlinfo.scheme.as_str());
+        assert_eq!("localhost", urlinfo.domain.as_str());
+        assert_eq!("/download/GoTiengViet.dmg", urlinfo.path.as_str());
+        assert_eq!("GoTiengViet.dmg", urlinfo.fname.as_str());
+        assert_eq!(false, urlinfo.is_tls());
+        assert_eq!(8080, urlinfo.port);
+        assert_eq!("localhost:8080", urlinfo.host_addr());
     }
 }
