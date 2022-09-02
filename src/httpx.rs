@@ -340,8 +340,8 @@ impl Iterator for HeaderIterator<'_> {
         if let Ok(n) = self.br.read_line(&mut self.buf) {
             // len > 2 because read_line always includes \r\n
             if n > 2 {
-                let parsed = parse_header(&self.buf.trim_end());
-                return parsed.map(|(key, val)| (key.to_string(), val.to_string()));
+                return parse_header(&self.buf.trim_end())
+                    .map(|(key, val)| (key.to_string(), val.to_string()));
             }
         }
 
@@ -406,12 +406,11 @@ fn parse_host_and_port<'a>(addr: &'a str, scheme: &str) -> Result<(&'a str, u16)
 }
 
 fn parse_header(header: &str) -> Option<(&str, &str)> {
-    let parts: Vec<&str> = header.split(":").collect();
-    if parts.len() != 2 {
-        return None;
+    if let Some(pos) = header.find(':') {
+        Some((&header[..pos].trim(), &header[pos + 1..].trim()))
+    } else {
+        None
     }
-
-    Some((parts[0].trim(), parts[1].trim()))
 }
 
 #[cfg(test)]

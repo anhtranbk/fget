@@ -55,10 +55,11 @@ fn get_download_info(resp: HttpResponse, debug: bool) -> Result<DownloadInfo, PE
     let mut content_type = String::new();
 
     for (key, val) in resp.headers().iter() {
+        let val = val.to_str()?;
         match *key {
-            header::CONTENT_LENGTH => len = val.to_str()?.parse::<u64>()?,
-            header::ACCEPT_RANGES => range_supported = val.to_str()? == "bytes",
-            header::CONTENT_TYPE => content_type = val.to_str()?.to_string(),
+            header::CONTENT_LENGTH => len = val.parse::<u64>()?,
+            header::ACCEPT_RANGES => range_supported = val == "bytes",
+            header::CONTENT_TYPE => content_type = val.to_string(),
             _ => {}
         }
     }
