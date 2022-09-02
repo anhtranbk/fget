@@ -195,7 +195,7 @@ impl HttpClient {
         builder
     }
 
-    fn send_request(&mut self, req: &Request<Vec<&u8>>) -> Result<Response<HttpBody>, PError> {
+    fn send_request(&mut self, req: &Request<Vec<&u8>>) -> Result<HttpResponse, PError> {
         let mut data = format!("{} {} HTTP/1.1\r\n", req.method(), req.uri());
         for (key, val) in req.headers().iter() {
             data += &key.to_string();
@@ -210,15 +210,14 @@ impl HttpClient {
         rw.write_all(data.as_bytes())?;
         rw.flush()?;
 
-        let br = BufReader::new(ToRead(rw));
-        Ok(HttpClient::make_response(br)?)
+        Ok(HttpClient::make_response(BufReader::new(ToRead(rw)))?)
     }
 
     fn make_response(mut br: BufReader<ToRead>) -> Result<HttpResponse, PError> {
-        let mut buf = String::new();
-        br.read_line(&mut buf)?;
+        let mut first_line = String::new();
+        br.read_line(&mut first_line)?;
 
-        let parts: Vec<&str> = buf.split_whitespace().collect();
+        let parts: Vec<&str> = first_line.split_whitespace().collect();
         if parts.len() < 3 {
             return Err(make_error("invalid response"));
         }
@@ -229,20 +228,20 @@ impl HttpClient {
                 format!("server response error: {}", status_code.as_u16(),).as_str(),
             ));
         }
+        if status_code.as_u16() / 100 == 3 {
+            return HttpClient::handle_redirect(br);
+        }
 
         let mut builder = Response::builder().status(status_code);
-        buf.clear();
-
-        // read_line may block forever if no endline found
-        while br.read_line(&mut buf)? > 2 {
-            // len > 2 because read_line always includes \r\n
-            if let Some((key, val)) = parse_header(&buf.trim_end()) {
-                builder = builder.header(key, val);
-            }
-            buf.clear();
+        for (key, val) in HeaderIterator::from(&mut br) {
+            builder = builder.header(key, val);
         }
 
         Ok(builder.body(br).unwrap())
+    }
+
+    fn handle_redirect(_: BufReader<ToRead>) -> Result<HttpResponse, PError> {
+        panic!()
     }
 }
 
@@ -314,6 +313,39 @@ impl HttpClientBuilder {
             self.tls,
             &self.cfg,
         )
+    }
+}
+
+struct HeaderIterator<'a> {
+    br: &'a mut BufReader<ToRead>,
+    buf: String,
+}
+
+impl HeaderIterator<'_> {
+    fn from(br: &mut BufReader<ToRead>) -> HeaderIterator {
+        HeaderIterator {
+            br,
+            buf: String::new(),
+        }
+    }
+}
+
+impl Iterator for HeaderIterator<'_> {
+    type Item = (String, String);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.buf.clear();
+
+        // read_line may block forever if no endline found
+        if let Ok(n) = self.br.read_line(&mut self.buf) {
+            // len > 2 because read_line always includes \r\n
+            if n > 2 {
+                let parsed = parse_header(&self.buf.trim_end());
+                return parsed.map(|(key, val)| (key.to_string(), val.to_string()));
+            }
+        }
+
+        None
     }
 }
 
