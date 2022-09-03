@@ -323,12 +323,15 @@ impl HttpClientBuilder {
     pub fn with_host_addr(mut self, addr: &str) -> HttpClientBuilder {
         self.host_addr.clear();
         self.host_addr.push_str(addr);
+
         self
     }
 
     pub fn with_tls(mut self, domain: &str) -> HttpClientBuilder {
+        self.tls = true;
         self.domain.clear();
         self.domain.push_str(domain);
+        
         self
     }
 
