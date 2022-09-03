@@ -1,5 +1,7 @@
 use std::{error::Error, fmt};
 
+use clap::Parser;
+
 #[allow(dead_code)]
 #[macro_export]
 macro_rules! map {
@@ -47,39 +49,36 @@ pub fn make_error(err: &str) -> PError {
     Box::new(FgetError(err.to_string()))
 }
 
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
 pub struct Config {
     pub url: String,
-    pub out_path: String,
+
+    #[clap(short, long, value_parser, value_name = "file")]
+    pub out_path: Option<String>,
+
+    #[clap(
+        short,
+        long,
+        value_parser,
+        default_value_t = 4,
+        value_name = "num_threads"
+    )]
     pub num_threads: u8,
+
+    #[clap(short, long, value_parser, default_value_t = false)]
     pub debug: bool,
 }
 
 impl Config {
-    pub fn build(args: &[String]) -> Result<Config, PError> {
-        if args.len() < 1 {
-            return Err(make_error("not enough arguments"));
+    pub fn build() -> Result<Config, PError> {
+        let cfg = Config::parse();
+        if cfg.num_threads <= 0 || cfg.num_threads > 32 {
+            return Err(make_error(
+                "invalid number of threads, must be between 1 and 32",
+            ));
         }
 
-        let url = args[0].clone();
-        let out_path = args.get(1).unwrap_or(&String::new()).clone();
-
-        let mut num_threads = 4; // default value is 4
-        let mut debug = false;
-        if args.len() >= 3 {
-            num_threads = args[2].parse::<u8>()?;
-            if num_threads <= 0 || num_threads > 32 {
-                return Err(make_error("invalid number of threads, must be between 1 and 32"));
-            }
-        }
-        if args.len() >= 4 {
-            debug = args[3].parse::<bool>()?;
-        }
-
-        Ok(Config {
-            url,
-            out_path,
-            num_threads,
-            debug,
-        })
+        Ok(cfg)
     }
 }

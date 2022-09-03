@@ -166,12 +166,6 @@ fn download<T: DownloadObserver>(
     dlinfo: &DownloadInfo,
     ob: &mut T,
 ) -> Result<(), PError> {
-    let out_path = if cfg.out_path.len() > 0 {
-        &cfg.out_path
-    } else {
-        &urlinfo.fname
-    };
-
     let num_threads = if dlinfo.range_supported {
         cfg.num_threads as u64
     } else {
@@ -229,6 +223,7 @@ fn download<T: DownloadObserver>(
     }
 
     // merge all download parts into one file
+    let out_path = cfg.out_path.as_ref().unwrap_or(&urlinfo.fname);
     merge_parts(&out_path, &dlparts)?;
 
     for handle in handles {

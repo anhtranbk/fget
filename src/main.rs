@@ -1,5 +1,3 @@
-use std::env;
-
 use fget::Config;
 
 mod downloader;
@@ -7,8 +5,7 @@ mod httpx;
 mod pb;
 
 fn main() {
-    let args = env::args().collect::<Vec<String>>();
-    let cfg = Config::build(&args[1..]).unwrap_or_else(|err| {
+    let cfg = Config::build().unwrap_or_else(|err| {
         panic!("Problem parsing arguments: {err}");
     });
 
