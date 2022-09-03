@@ -196,6 +196,10 @@ impl HttpClient {
     }
 
     fn send_request(&mut self, req: &Request<Vec<&u8>>) -> Result<HttpResponse, PError> {
+        if req.method() != Method::GET && req.method() != Method::HEAD {
+            return Err(make_error("unsupported method"));
+        }
+
         let mut data = format!("{} {} HTTP/1.1\r\n", req.method(), req.uri());
         for (key, val) in req.headers().iter() {
             data += &key.to_string();
@@ -210,10 +214,13 @@ impl HttpClient {
         rw.write_all(data.as_bytes())?;
         rw.flush()?;
 
-        Ok(HttpClient::make_response(BufReader::new(ToRead(rw)))?)
+        Ok(HttpClient::make_response(req, BufReader::new(ToRead(rw)))?)
     }
 
-    fn make_response(mut br: BufReader<ToRead>) -> Result<HttpResponse, PError> {
+    fn make_response<T>(
+        req: &Request<T>,
+        mut br: BufReader<ToRead>,
+    ) -> Result<HttpResponse, PError> {
         let mut first_line = String::new();
         br.read_line(&mut first_line)?;
 
@@ -229,7 +236,7 @@ impl HttpClient {
             ));
         }
         if status_code.as_u16() / 100 == 3 {
-            return HttpClient::handle_redirect(br);
+            return HttpClient::handle_redirect(req, &status_code, br);
         }
 
         let mut builder = Response::builder().status(status_code);
@@ -240,8 +247,31 @@ impl HttpClient {
         Ok(builder.body(br).unwrap())
     }
 
-    fn handle_redirect(_: BufReader<ToRead>) -> Result<HttpResponse, PError> {
-        panic!()
+    fn handle_redirect<T>(
+        req: &Request<T>,
+        status_code: &StatusCode, // only for logging purposes
+        mut br: BufReader<ToRead>,
+    ) -> Result<HttpResponse, PError> {
+        for (key, val) in HeaderIterator::from(&mut br) {
+            let key = key.to_lowercase();
+            if key.trim() == "location" {
+                println!("Redirecting to: {}", val);
+                let client = HttpClientBuilder::new().from_url(&val)?.build()?;
+                match *req.method() {
+                    Method::GET => return client.get(&val),
+                    Method::HEAD => return client.head(&val),
+                    _ => return Err(make_error("unsupported method")),
+                }
+            }
+        }
+
+        Err(make_error(
+            format!(
+                "server return {} but no location header was found",
+                status_code.as_u16()
+            )
+            .as_str(),
+        ))
     }
 }
 
