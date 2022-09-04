@@ -1,5 +1,5 @@
 use crate::{
-    httpx::{resolve_addr, HttpClient, HttpResponse, UrlInfo},
+    httpx::{resolve_addr, HttpClient, HttpResponse, RedirectPolicy, UrlInfo},
     Config,
 };
 use fget::{make_error, map, PError, VoidResult};
@@ -49,6 +49,18 @@ fn format_byte_length(len: u64) -> String {
     format!("{:.1} {}", value, units[unit_index])
 }
 
+fn build_client(cfg: &Config, urlinfo: &UrlInfo) -> Result<HttpClient, PError> {
+    let mut builder = HttpClient::builder().from_url_info(&urlinfo);
+    if cfg.no_redirect {
+        builder = builder.with_redirect_policy(RedirectPolicy::None);
+    }
+    if cfg.timeout > 0 {
+        builder = builder.with_timeout_ms(cfg.timeout as u64 * 1000);
+    }
+
+    builder.build()
+}
+
 fn get_download_info(resp: HttpResponse) -> Result<DownloadInfo, PError> {
     let mut len = 0u64;
     let mut range_supported = false;
@@ -72,6 +84,7 @@ fn get_download_info(resp: HttpResponse) -> Result<DownloadInfo, PError> {
 }
 
 fn download_part(
+    cfg: &Config,
     urlinfo: &UrlInfo,
     start: u64,
     end: u64,
@@ -81,10 +94,8 @@ fn download_part(
     let headers = map!(
         header::RANGE.to_string() => format!("bytes={}-{}", start, end)
     );
-    let resp = HttpClient::builder()
-        .from_url_info(&urlinfo)
-        .build()?
-        .get_with_headers(&urlinfo.path, &headers)?;
+    let client = build_client(cfg, urlinfo)?;
+    let resp = client.get_with_headers(&urlinfo.path, &headers)?;
 
     let mut r = resp.into_body();
     let mut buf = [0u8; 8192];
@@ -179,8 +190,10 @@ fn download<T: DownloadObserver>(
         let _sender = sender.clone();
         let _urlinfo = urlinfo.clone();
         let _idx = i as u8;
+        let _cfg = cfg.clone();
+
         let handle = thread::spawn(move || {
-            if let Err(err) = download_part(&_urlinfo, start, end, _idx, &_sender) {
+            if let Err(err) = download_part(&_cfg, &_urlinfo, start, end, _idx, &_sender) {
                 _sender
                     .send(DownloadStatus::Failed(_idx, err.to_string()))
                     .unwrap();
@@ -240,7 +253,7 @@ pub fn run<T: DownloadObserver>(cfg: &Config, ob: &mut T) -> Result<(), PError> 
         urlinfo.port
     );
 
-    let client = HttpClient::builder().from_url_info(&urlinfo).build()?;
+    let client = build_client(cfg, &urlinfo)?;
     println!("connected.");
     print!("HTTP request sent, awaiting response... ");
 

@@ -406,9 +406,12 @@ fn open_conn(
     tls: bool,
     timeout_ms: u64,
 ) -> Result<Box<dyn ReadWrite>, PError> {
-    let duration = Duration::from_millis(timeout_ms);
+    let dur = Duration::from_millis(timeout_ms);
     let sock_addr = resolve_addr(host_addr)?;
-    let stream = TcpStream::connect_timeout(&sock_addr, duration)?;
+
+    let stream = TcpStream::connect_timeout(&sock_addr, dur)?;
+    stream.set_read_timeout(Some(dur))?;
+    stream.set_write_timeout(Some(dur))?; 
 
     if tls {
         let tls_conn = TlsConnector::new()?;
