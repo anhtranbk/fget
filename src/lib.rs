@@ -69,6 +69,8 @@ pub struct Config {
     )]
     pub info: bool,
 
+    // no-redirect seems pointless option but I add this option just to examine 
+    // how to use Rust enum via RedirectPolicy, haha =))
     #[clap(short = 'r', long, value_parser, action)]
     pub no_redirect: bool,
 
@@ -85,7 +87,6 @@ pub struct Config {
 impl Config {
     pub fn build() -> Result<Config, PError> {
         let cfg = Config::parse();
-        println!("{:?}", cfg);
         if cfg.num_threads <= 0 || cfg.num_threads > 32 {
             return Err(make_error(
                 "invalid number of threads, must be between 1 and 32",
