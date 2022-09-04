@@ -55,7 +55,7 @@ pub struct Config {
     pub url: String,
 
     #[clap(short, long, value_parser, value_name = "file")]
-    pub out_path: Option<String>,
+    pub output: Option<String>,
 
     #[clap(
         short,
@@ -67,7 +67,7 @@ pub struct Config {
     pub num_threads: u8,
 
     #[clap(short, long, value_parser, default_value_t = false)]
-    pub debug: bool,
+    pub info: bool,
 }
 
 impl Config {

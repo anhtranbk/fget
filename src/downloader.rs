@@ -49,7 +49,7 @@ fn format_byte_length(len: u64) -> String {
     format!("{:.1} {}", value, units[unit_index])
 }
 
-fn get_download_info(resp: HttpResponse, debug: bool) -> Result<DownloadInfo, PError> {
+fn get_download_info(resp: HttpResponse) -> Result<DownloadInfo, PError> {
     let mut len = 0u64;
     let mut range_supported = false;
     let mut content_type = String::new();
@@ -62,14 +62,6 @@ fn get_download_info(resp: HttpResponse, debug: bool) -> Result<DownloadInfo, PE
             header::CONTENT_TYPE => content_type = val.to_string(),
             _ => {}
         }
-    }
-
-    if debug {
-        println!("Response headers:");
-        for (key, value) in resp.headers().iter() {
-            println!("=> {}: {}", key, value.to_str().unwrap_or_default());
-        }
-        println!("");
     }
 
     Ok(DownloadInfo {
@@ -223,8 +215,8 @@ fn download<T: DownloadObserver>(
     }
 
     // merge all download parts into one file
-    let out_path = cfg.out_path.as_ref().unwrap_or(&urlinfo.fname);
-    merge_parts(&out_path, &dlparts)?;
+    let output = cfg.output.as_ref().unwrap_or(&urlinfo.fname);
+    merge_parts(&output, &dlparts)?;
 
     for handle in handles {
         handle.join().unwrap();
@@ -261,7 +253,16 @@ pub fn run<T: DownloadObserver>(cfg: &Config, ob: &mut T) -> Result<(), PError> 
         resp.status().canonical_reason().unwrap_or_default()
     );
 
-    let dlinfo = get_download_info(resp, cfg.debug)?;
+    if cfg.info {
+        println!("Response headers:");
+        for (key, value) in resp.headers().iter() {
+            println!("=> {}: {}", key, value.to_str().unwrap_or_default());
+        }
+
+        return Ok(());
+    }
+
+    let dlinfo = get_download_info(resp)?;
     println!(
         "Length: {} ({}), accept-ranges: {} [{}]",
         dlinfo.len,
