@@ -104,7 +104,7 @@ fn download_part(
     let dir = std::env::temp_dir();
     let fpath = format!(
         "{}{}.{}",
-        dir.to_str().unwrap_or("/tmp"),
+        dir.to_str().unwrap_or("/tmp/"),
         urlinfo.fname,
         idx
     );
