@@ -181,12 +181,14 @@ fn download<T: DownloadObserver>(
 
     let (sender, recv) = mpsc::channel();
     let mut handles = vec![];
-    let mut dlparts = vec![String::default(); num_threads as usize];
 
     for i in 0..num_threads {
         let start = i * chunk_size;
         let end = cmp::min((i + 1) * chunk_size - 1, dlinfo.len - 1);
 
+        // it seems studpid but with my current knowledge about Rust, using clone is the 
+        // easiest way to share object between multi-thread, even though I know that 
+        // url_info and cfg are read-only objects and can be safe to read by multiple threads
         let _sender = sender.clone();
         let _urlinfo = urlinfo.clone();
         let _idx = i as u8;
@@ -203,8 +205,10 @@ fn download<T: DownloadObserver>(
         handles.push(handle);
     }
 
-    // block until all download threads are done or an error is encountered
     let mut cnt = num_threads; // number of remaining downloads
+    let mut dlparts = vec![String::default(); num_threads as usize];
+
+    // block until all download threads are done or an error is encountered
     for msg in recv {
         match msg {
             DownloadStatus::Started(idx, len) => ob.on_download_start(idx, len),
@@ -227,13 +231,13 @@ fn download<T: DownloadObserver>(
         }
     }
 
-    // merge all download parts into one file
-    let output = cfg.output.as_ref().unwrap_or(&urlinfo.fname);
-    merge_parts(&output, &dlparts)?;
-
     for handle in handles {
         handle.join().unwrap();
     }
+
+    // merge all download parts into one file
+    let output = cfg.output.as_ref().unwrap_or(&urlinfo.fname);
+    merge_parts(&output, &dlparts)?;
 
     Ok(())
 }
