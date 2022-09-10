@@ -90,9 +90,9 @@ const DEFAULT_REDIRECT_POLICY: RedirectPolicy = RedirectPolicy::Follow(10);
 pub struct HttpClient {
     host_addr: String,
     rw: Option<Box<dyn ReadWrite>>,
+    cfg: HttpConfig,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum RedirectPolicy {
     Follow(u8), // maximum number of redirects
@@ -120,6 +120,7 @@ impl HttpClient {
         Ok(Self {
             host_addr: host_addr.to_string(),
             rw: Some(open_conn(host_addr, domain, tls, cfg.timeout_ms)?),
+            cfg: cfg.clone(),
         })
     }
 
@@ -129,7 +130,7 @@ impl HttpClient {
             .make_request(Method::HEAD, path, None)
             .body(vec![])
             .unwrap();
-        self.send_request(&req)
+        self.send(&req)
     }
 
     /// send a head request with custom headers, because of one-time,
@@ -143,7 +144,7 @@ impl HttpClient {
             .make_request(Method::HEAD, path, Some(headers))
             .body(vec![])
             .unwrap();
-        self.send_request(&req)
+        self.send(&req)
     }
 
     /// send a get request, because of one-time, so client will be moved out after this method
@@ -152,7 +153,7 @@ impl HttpClient {
             .make_request(Method::GET, path, None)
             .body(vec![])
             .unwrap();
-        self.send_request(&req)
+        self.send(&req)
     }
 
     /// send a get request with custom headers, because of one-time,
@@ -166,7 +167,7 @@ impl HttpClient {
             .make_request(Method::GET, path, Some(headers))
             .body(vec![])
             .unwrap();
-        self.send_request(&req)
+        self.send(&req)
     }
 
     fn make_request(&self, method: Method, path: &str, headers: Option<&HttpHeaders>) -> Builder {
@@ -195,7 +196,7 @@ impl HttpClient {
         builder
     }
 
-    fn send_request(&mut self, req: &Request<Vec<&u8>>) -> Result<HttpResponse, PError> {
+    fn send(&mut self, req: &Request<Vec<&u8>>) -> Result<HttpResponse, PError> {
         if req.method() != Method::GET && req.method() != Method::HEAD {
             return Err(make_error("unsupported method"));
         }
@@ -214,29 +215,43 @@ impl HttpClient {
         rw.write_all(data.as_bytes())?;
         rw.flush()?;
 
-        Ok(HttpClient::make_response(req, BufReader::new(ToRead(rw)))?)
+        Ok(self.make_response(req, BufReader::new(ToRead(rw)))?)
     }
 
-    fn make_response<T>(
-        req: &Request<T>,
-        mut br: BufReader<ToRead>,
-    ) -> Result<HttpResponse, PError> {
-        let mut first_line = String::new();
-        br.read_line(&mut first_line)?;
+    fn get_status_code(&self, br: &mut BufReader<ToRead>) -> Result<StatusCode, PError> {
+        let mut buff = String::new();
+        br.read_line(&mut buff)?;
 
-        let parts: Vec<&str> = first_line.split_whitespace().collect();
+        let parts: Vec<&str> = buff.split_whitespace().collect();
         if parts.len() < 3 {
             return Err(make_error("invalid response"));
         }
 
-        let status_code = StatusCode::from_str(parts[1])?;
+        Ok(StatusCode::from_str(parts[1])?)
+    }
+
+    fn make_response<T>(
+        &self,
+        req: &Request<T>,
+        mut br: BufReader<ToRead>,
+    ) -> Result<HttpResponse, PError> {
+        let status_code = self.get_status_code(&mut br)?;
         if status_code.as_u16() / 100 >= 4 {
             return Err(make_error(
                 format!("server response error: {}", status_code.as_u16(),).as_str(),
             ));
         }
         if status_code.as_u16() / 100 == 3 {
-            return HttpClient::handle_redirect(req, &status_code, br);
+            match self.cfg.redirect_policy {
+                RedirectPolicy::None => return Err(make_error("redirect is not supported")),
+                RedirectPolicy::Follow(max_redirects) => {
+                    return if max_redirects > 0 {
+                        self.handle_redirect(req, &status_code, br, max_redirects)
+                    } else {
+                        Err(make_error("max redirects exceeded"))
+                    }
+                }
+            }
         }
 
         let mut builder = Response::builder().status(status_code);
@@ -248,15 +263,23 @@ impl HttpClient {
     }
 
     fn handle_redirect<T>(
+        &self,
         req: &Request<T>,
         status_code: &StatusCode, // only for logging purposes
         mut br: BufReader<ToRead>,
+        max_redirects: u8,
     ) -> Result<HttpResponse, PError> {
         for (key, val) in HeaderIterator::from(&mut br) {
             let key = key.to_lowercase();
             if key.trim() == "location" {
                 println!("Redirecting to: {}", val);
-                let client = HttpClientBuilder::new().from_url(&val)?.build()?;
+                // buile new client with current http config
+                let client = HttpClientBuilder::new()
+                    .from_url(&val)?
+                    .with_timeout_ms(self.cfg.timeout_ms)
+                    .with_redirect_policy(RedirectPolicy::Follow(max_redirects - 1))
+                    .build()?;
+
                 match *req.method() {
                     Method::GET => return client.get(&val),
                     Method::HEAD => return client.head(&val),
@@ -331,7 +354,7 @@ impl HttpClientBuilder {
         self.tls = true;
         self.domain.clear();
         self.domain.push_str(domain);
-        
+
         self
     }
 
@@ -411,7 +434,7 @@ fn open_conn(
 
     let stream = TcpStream::connect_timeout(&sock_addr, dur)?;
     stream.set_read_timeout(Some(dur))?;
-    stream.set_write_timeout(Some(dur))?; 
+    stream.set_write_timeout(Some(dur))?;
 
     if tls {
         let tls_conn = TlsConnector::new()?;

@@ -259,7 +259,7 @@ pub fn run<T: DownloadObserver>(cfg: &Config, ob: &mut T) -> Result<(), PError> 
 
     let client = build_client(cfg, &urlinfo)?;
     println!("connected.");
-    print!("HTTP request sent, awaiting response... ");
+    println!("HTTP request sent, awaiting response... ");
 
     // our http client is one-time client, so we must move it
     // to let get_download_info use it instead of borrow
