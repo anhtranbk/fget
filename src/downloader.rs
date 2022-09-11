@@ -2,7 +2,7 @@ use crate::{
     httpx::{resolve_addr, HttpClient, HttpResponse, RedirectPolicy, UrlInfo},
     Config,
 };
-use fget::{make_error, map, PError, VoidResult};
+use fget::{make_error, map, PError};
 use http::header;
 
 use std::{
@@ -130,19 +130,23 @@ fn download_part(
     Ok(())
 }
 
-fn merge_parts(fpath: &String, parts: &Vec<String>) -> VoidResult {
+fn merge_parts(fpath: &String, parts: &Vec<String>) -> Result<(), PError> {
+    // if there is only one part, just rename downloaded file
+    if parts.len() == 1 {
+        fs::rename(parts.get(0).unwrap(), &fpath)?;
+        return Ok(());
+    }
+
     let tmp_path = format!("{}.tmp", fpath);
     let mut w = BufWriter::new(File::create(&tmp_path)?);
     let mut buf = [0u8; 8192];
 
-    let mut len = 0u64;
     for part in parts {
         let mut r = File::open(part)?;
         loop {
             let n = r.read(&mut buf)?;
             if n > 0 {
                 w.write_all(&buf[..n])?;
-                len += n as u64;
             } else {
                 break;
             }
@@ -153,12 +157,6 @@ fn merge_parts(fpath: &String, parts: &Vec<String>) -> VoidResult {
     drop(w); // drop the file to close it before renaming
 
     fs::rename(&tmp_path, &fpath)?;
-    println!(
-        "File downloaded to '{}': {} ({})",
-        fpath,
-        len,
-        format_byte_length(len)
-    );
 
     Ok(())
 }
@@ -186,8 +184,8 @@ fn download<T: DownloadObserver>(
         let start = i * chunk_size;
         let end = cmp::min((i + 1) * chunk_size - 1, dlinfo.len - 1);
 
-        // it seems studpid but with my current knowledge about Rust, using clone is the 
-        // easiest way to share object between multi-thread, even though I know that 
+        // it seems studpid but with my current knowledge about Rust, using clone is the
+        // easiest way to share object between multi-thread, even though I know that
         // url_info and cfg are read-only objects and can be safe to read by multiple threads
         let _sender = sender.clone();
         let _urlinfo = urlinfo.clone();
@@ -238,6 +236,12 @@ fn download<T: DownloadObserver>(
     // merge all download parts into one file
     let output = cfg.output.as_ref().unwrap_or(&urlinfo.fname);
     merge_parts(&output, &dlparts)?;
+    println!(
+        "File downloaded to '{}': {} ({})",
+        output,
+        dlinfo.len,
+        format_byte_length(dlinfo.len)
+    );
 
     Ok(())
 }
