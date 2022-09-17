@@ -35,7 +35,11 @@ pub struct UrlInfo {
 impl UrlInfo {
     pub fn parse(url: &str) -> Result<UrlInfo, PError> {
         let parts: Vec<&str> = url.split("/").collect();
-        let scheme = &parts[0][..parts[0].len() - 1];
+        if parts.len() < 4 {
+            return Err(make_error("Invalid URL"));
+        }
+        
+        let scheme = parse_and_validate_scheme(&parts[0])?;
         let (host, port) = parse_host_and_port(parts[2], scheme)?;
         let query_idx = parts[0].len() + parts[1].len() + parts[2].len() + 2;
 
@@ -461,6 +465,14 @@ fn parse_host_and_port<'a>(addr: &'a str, scheme: &str) -> Result<(&'a str, u16)
         };
 
         Ok((addr, port))
+    }
+}
+
+fn parse_and_validate_scheme(scheme: &str) -> Result<&str, PError> {
+    if scheme == "http:" || scheme == "https:" {
+        Ok(&scheme[..scheme.len() - 1])
+    } else {
+        Err(make_error("Invalid scheme"))
     }
 }
 
