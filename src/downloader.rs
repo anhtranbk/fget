@@ -57,6 +57,9 @@ fn build_client(cfg: &Config, urlinfo: &UrlInfo) -> Result<HttpClient, PError> {
     if cfg.timeout > 0 {
         builder = builder.with_timeout_ms(cfg.timeout as u64 * 1000);
     }
+    if cfg.user_agent.is_some() {
+        builder = builder.with_user_agent(cfg.user_agent.as_ref().unwrap());
+    }
 
     builder.build()
 }
