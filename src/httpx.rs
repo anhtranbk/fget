@@ -183,17 +183,17 @@ impl HttpClient {
             .header(header::HOST, &self.host_addr)
             .header(header::USER_AGENT, &self.cfg.user_agent);
 
-        if let Some(headers) = headers {
-            for (key, val) in headers.iter() {
-                builder = builder.header(key, val);
-            }
-        }
-
         let default_headers: HashMap<&str, &str> = hash_map!(
             "Accept" => "*/*",
             "Accept-Encoding" => "identity",
             "Connection" => "Keep-Alive"
         );
+
+        if let Some(headers) = headers {
+            for (key, val) in headers.iter() {
+                builder = builder.header(key, val);
+            }
+        }
 
         for (key, val) in default_headers.iter() {
             builder = builder.header(*key, *val);
