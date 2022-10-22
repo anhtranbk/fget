@@ -38,7 +38,7 @@ impl UrlInfo {
         if parts.len() < 4 {
             return Err(make_error("Invalid URL"));
         }
-        
+
         let scheme = parse_and_validate_scheme(&parts[0])?;
         let (host, port) = parse_host_and_port(parts[2], scheme)?;
         let query_idx = parts[0].len() + parts[1].len() + parts[2].len() + 2;
@@ -89,6 +89,7 @@ pub type HttpHeaders = HashMap<String, String>;
 
 const DEFAULT_TIMEOUT_MS: u64 = 5 * 1000;
 const DEFAULT_REDIRECT_POLICY: RedirectPolicy = RedirectPolicy::Follow(10);
+const DEFAULT_USER_AGENT: &'static str = "fget/0.1.0";
 
 /// One-time http client
 pub struct HttpClient {
@@ -107,6 +108,7 @@ pub enum RedirectPolicy {
 pub struct HttpConfig {
     redirect_policy: RedirectPolicy,
     timeout_ms: u64,
+    user_agent: String,
 }
 
 #[allow(dead_code)]
@@ -178,7 +180,8 @@ impl HttpClient {
         let mut builder = Request::builder()
             .method(method)
             .uri(path)
-            .header(header::HOST, &self.host_addr);
+            .header(header::HOST, &self.host_addr)
+            .header(header::USER_AGENT, &self.cfg.user_agent);
 
         if let Some(headers) = headers {
             for (key, val) in headers.iter() {
@@ -187,7 +190,6 @@ impl HttpClient {
         }
 
         let default_headers: HashMap<&str, &str> = hash_map!(
-            "User-Agent" => "fget/0.1.0",
             "Accept" => "*/*",
             "Accept-Encoding" => "identity",
             "Connection" => "Keep-Alive"
@@ -319,6 +321,7 @@ impl HttpClientBuilder {
             cfg: HttpConfig {
                 redirect_policy: DEFAULT_REDIRECT_POLICY,
                 timeout_ms: DEFAULT_TIMEOUT_MS,
+                user_agent: DEFAULT_USER_AGENT.to_string(),
             },
         }
     }
@@ -347,9 +350,16 @@ impl HttpClientBuilder {
         self
     }
 
+    pub fn with_user_agent(mut self, ua: &str) -> HttpClientBuilder {
+        self.cfg.user_agent.clear();
+        self.cfg.user_agent += ua;
+
+        self
+    }
+
     pub fn with_host_addr(mut self, addr: &str) -> HttpClientBuilder {
         self.host_addr.clear();
-        self.host_addr.push_str(addr);
+        self.host_addr += addr;
 
         self
     }
@@ -357,7 +367,7 @@ impl HttpClientBuilder {
     pub fn with_tls(mut self, domain: &str) -> HttpClientBuilder {
         self.tls = true;
         self.domain.clear();
-        self.domain.push_str(domain);
+        self.domain += domain;
 
         self
     }

@@ -57,7 +57,21 @@ pub struct Config {
     #[clap(short, long, value_parser, value_name = "FILE")]
     pub output: Option<String>,
 
-    #[clap(short = 't', long, value_parser, default_value_t = 4)]
+    #[clap(
+        short,
+        long,
+        value_parser,
+        help = "User-Agent header to be used by the HTTP client"
+    )]
+    pub user_agent: Option<String>,
+
+    #[clap(
+        short = 't',
+        long,
+        value_parser,
+        default_value_t = 4,
+        help = "Number of concurrent downloads (if supported by server) using http-range"
+    )]
     pub num_threads: u8,
 
     #[clap(
@@ -69,7 +83,7 @@ pub struct Config {
     )]
     pub info: bool,
 
-    // no-redirect seems pointless option but I add this option just to examine 
+    // no-redirect seems like a pointless option but I add this option just to examine
     // how to use Rust enum via RedirectPolicy, haha =))
     #[clap(short = 'r', long, value_parser, action)]
     pub no_redirect: bool,
