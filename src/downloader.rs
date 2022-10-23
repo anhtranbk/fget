@@ -1,6 +1,6 @@
 use crate::{
-    httpx::{resolve_addr, HttpClient, HttpResponse, RedirectPolicy, UrlInfo},
-    Config,
+    httpx::{resolve_addr, HttpClient, HttpResponse, RedirectPolicy},
+    Config, urlinfo::UrlInfo,
 };
 use fget::{make_error, map, PError};
 use http::header;

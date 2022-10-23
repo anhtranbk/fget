@@ -3,6 +3,7 @@ use fget::Config;
 mod downloader;
 mod httpx;
 mod pb;
+mod urlinfo;
 
 fn main() {
     let cfg = Config::build().unwrap_or_else(|err| {
