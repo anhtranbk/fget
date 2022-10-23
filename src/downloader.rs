@@ -1,6 +1,7 @@
 use crate::{
     httpx::{resolve_addr, HttpClient, HttpResponse, RedirectPolicy},
-    Config, urlinfo::UrlInfo,
+    urlinfo::UrlInfo,
+    Config,
 };
 use fget::{make_error, map, PError};
 use http::header;
@@ -57,8 +58,8 @@ fn build_client(cfg: &Config, urlinfo: &UrlInfo) -> Result<HttpClient, PError> {
     if cfg.timeout > 0 {
         builder = builder.with_timeout_ms(cfg.timeout as u64 * 1000);
     }
-    if cfg.user_agent.is_some() {
-        builder = builder.with_user_agent(cfg.user_agent.as_ref().unwrap());
+    if let Some(ua) = &cfg.user_agent {
+        builder = builder.with_user_agent(ua);
     }
 
     builder.build()
@@ -187,7 +188,7 @@ fn download<T: DownloadObserver>(
         let start = i * chunk_size;
         let end = cmp::min((i + 1) * chunk_size - 1, dlinfo.len - 1);
 
-        // it seems studpid but with my current knowledge about Rust, using clone is the
+        // below seems stupid but with my current knowledge about Rust, using clone is the
         // easiest way to share object between multi-thread, even though I know that
         // url_info and cfg are read-only objects and can be safe to read by multiple threads
         let _sender = sender.clone();
@@ -199,7 +200,7 @@ fn download<T: DownloadObserver>(
             if let Err(err) = download_part(&_cfg, &_urlinfo, start, end, _idx, &_sender) {
                 _sender
                     .send(DownloadStatus::Failed(_idx, err.to_string()))
-                    .unwrap();
+                    .unwrap(); // TODO: find a safe way to handle this
             }
         });
 
@@ -233,6 +234,7 @@ fn download<T: DownloadObserver>(
     }
 
     for handle in handles {
+        // TODO: is there a better way ?
         handle.join().unwrap();
     }
 

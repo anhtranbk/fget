@@ -81,10 +81,7 @@ impl HttpClient {
 
     /// send a head request, because of one-time so client will be moved out after this method
     pub fn head(mut self, path: &str) -> Result<HttpResponse, PError> {
-        let req = self
-            .make_request(Method::HEAD, path, None)
-            .body(vec![])
-            .unwrap();
+        let req = self.make_request(Method::HEAD, path, None).body(vec![])?;
         self.send(&req)
     }
 
@@ -97,17 +94,13 @@ impl HttpClient {
     ) -> Result<HttpResponse, PError> {
         let req = self
             .make_request(Method::HEAD, path, Some(headers))
-            .body(vec![])
-            .unwrap();
+            .body(vec![])?;
         self.send(&req)
     }
 
     /// send a get request, because of one-time, so client will be moved out after this method
     pub fn get(mut self, path: &str) -> Result<HttpResponse, PError> {
-        let req = self
-            .make_request(Method::GET, path, None)
-            .body(vec![])
-            .unwrap();
+        let req = self.make_request(Method::GET, path, None).body(vec![])?;
         self.send(&req)
     }
 
@@ -120,8 +113,8 @@ impl HttpClient {
     ) -> Result<HttpResponse, PError> {
         let req = self
             .make_request(Method::GET, path, Some(headers))
-            .body(vec![])
-            .unwrap();
+            .body(vec![])?;
+
         self.send(&req)
     }
 
@@ -160,7 +153,7 @@ impl HttpClient {
         for (key, val) in req.headers().iter() {
             data += &key.to_string();
             data += ": ";
-            data += &val.to_str().unwrap();
+            data += &val.to_str()?;
             data += "\r\n";
         }
         // end of headers
@@ -214,7 +207,7 @@ impl HttpClient {
             builder = builder.header(key, val);
         }
 
-        Ok(builder.body(br).unwrap())
+        Ok(builder.body(br)?)
     }
 
     fn handle_redirect<T>(
@@ -371,7 +364,7 @@ impl Iterator for HeaderIterator<'_> {
 pub fn resolve_addr(addr: &str) -> Result<SocketAddr, PError> {
     let mut sock_addrs = addr.to_socket_addrs()?;
     if sock_addrs.len() == 0 {
-        return Err(make_error("invalid host address"));
+        return Err(make_error("no valid host address found"));
     }
 
     let sock_addr = sock_addrs.next().unwrap();
