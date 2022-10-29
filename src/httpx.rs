@@ -80,7 +80,7 @@ impl HttpClient {
     }
 
     /// send a head request, because of one-time so client will be moved out after this method
-    pub fn head(mut self, path: &str) -> Result<HttpResponse, PError> {
+    pub fn head(self, path: &str) -> Result<HttpResponse, PError> {
         let req = self.make_request(Method::HEAD, path, None).body(vec![])?;
         self.send(&req)
     }
@@ -88,7 +88,7 @@ impl HttpClient {
     /// send a head request with custom headers, because of one-time,
     /// so client will be moved out after this method
     pub fn head_with_headers(
-        mut self,
+        self,
         path: &str,
         headers: &HttpHeaders,
     ) -> Result<HttpResponse, PError> {
@@ -100,7 +100,7 @@ impl HttpClient {
     }
 
     /// send a get request, because of one-time, so client will be moved out after this method
-    pub fn get(mut self, path: &str) -> Result<HttpResponse, PError> {
+    pub fn get(self, path: &str) -> Result<HttpResponse, PError> {
         let req = self.make_request(Method::GET, path, None).body(vec![])?;
         self.send(&req)
     }
@@ -108,7 +108,7 @@ impl HttpClient {
     /// send a get request with custom headers, because of one-time,
     /// so client will be moved out after this method
     pub fn get_with_headers(
-        mut self,
+        self,
         path: &str,
         headers: &HttpHeaders,
     ) -> Result<HttpResponse, PError> {
