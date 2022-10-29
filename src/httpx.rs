@@ -95,6 +95,7 @@ impl HttpClient {
         let req = self
             .make_request(Method::HEAD, path, Some(headers))
             .body(vec![])?;
+
         self.send(&req)
     }
 
@@ -144,7 +145,7 @@ impl HttpClient {
         builder
     }
 
-    fn send(&mut self, req: &Request<Vec<&u8>>) -> Result<HttpResponse, PError> {
+    fn send(mut self, req: &Request<Vec<&u8>>) -> Result<HttpResponse, PError> {
         if req.method() != Method::GET && req.method() != Method::HEAD {
             return Err(make_error("unsupported method"));
         }
@@ -179,7 +180,7 @@ impl HttpClient {
     }
 
     fn make_response<T>(
-        &self,
+        self,
         req: &Request<T>,
         mut br: BufReader<ToRead>,
     ) -> Result<HttpResponse, PError> {
@@ -211,7 +212,7 @@ impl HttpClient {
     }
 
     fn handle_redirect<T>(
-        &self,
+        self,
         req: &Request<T>,
         status_code: &StatusCode, // only for logging purposes
         mut br: BufReader<ToRead>,
@@ -221,9 +222,10 @@ impl HttpClient {
             let key = key.to_lowercase();
             if key.trim() == "location" {
                 println!("Redirecting to: {}", val);
-                // buile new client with current http config
+                // build new client with same config from current one
                 let client = HttpClientBuilder::new()
                     .from_url(&val)?
+                    .with_config(&self.cfg)
                     .with_timeout_ms(self.cfg.timeout_ms)
                     .with_redirect_policy(RedirectPolicy::Follow(max_redirects - 1))
                     .build()?;
@@ -279,6 +281,11 @@ impl HttpClientBuilder {
         self.domain.clear();
         self.domain += &urlinfo.domain;
 
+        self
+    }
+
+    pub fn with_config(mut self, cfg: &HttpConfig) -> HttpClientBuilder {
+        self.cfg = cfg.clone();
         self
     }
 
